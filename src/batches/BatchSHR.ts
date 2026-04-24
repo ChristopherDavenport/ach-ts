@@ -22,6 +22,21 @@ export class BatchSHR extends Batch {
     return null;
   }
 
+  validateAll(): Error[] {
+    if (this.validateOpts?.skipAll || this.validateOpts?.bypassBatchValidation) return [];
+    const errors = this.verifyAll();
+    if (this.header.standardEntryClassCode !== SHR) {
+      errors.push(this.batchError('StandardEntryClassCode', ErrBatchSECType, SHR));
+    }
+    switch (this.header.serviceClassCode) {
+      case MixedDebitsAndCredits: case CreditsOnly: case DebitsOnly: break;
+      default:
+        errors.push(this.batchError('ServiceClassCode', ErrBatchServiceClassCode, this.header.serviceClassCode));
+    }
+    for (const inv of this.invalidEntries()) errors.push(inv.error);
+    return errors;
+  }
+
   invalidEntries(): InvalidEntry[] {
     const out: InvalidEntry[] = [];
     for (const entry of this.entries) {

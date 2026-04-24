@@ -1,4 +1,5 @@
 import { entryAddendaPos } from './constants.js';
+import { enrichErrors, addenda99FieldPositions } from './fieldPositions.js';
 import type { ValidateOpts } from './validateOpts.js';
 import { Converters } from './utils/converters.js';
 import { Validators } from './utils/validators.js';
@@ -170,6 +171,20 @@ export class Addenda99 {
       }
     }
     return null;
+  }
+
+  /** ValidateAll performs all NACHA format rule checks and returns all errors found */
+  validateAll(): Error[] {
+    const errors: Error[] = [];
+    const push = (err: Error | null | undefined) => { if (err) errors.push(err); };
+
+    if (this.typeCode === '') push(fieldError('TypeCode', ErrConstructor, this.typeCode));
+    if (this.typeCode !== '99') push(fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode));
+    if (!this.validateOpts?.customReturnCodes) {
+      if (!returnCodeDict.has(this.returnCode)) push(fieldError('ReturnCode', ErrAddenda99ReturnCode, this.returnCode));
+    }
+
+    return enrichErrors(errors, this.lineNumber, addenda99FieldPositions);
   }
 
   returnCodeField(): ReturnCode | null {

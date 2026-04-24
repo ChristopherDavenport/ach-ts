@@ -19,6 +19,7 @@ import {
 } from './constants.js';
 import {
   BatchError,
+  FieldError,
   fieldError,
   ErrFieldInclusion,
   ErrBatchNoEntries,
@@ -34,6 +35,11 @@ import {
   ErrBatchCategory,
   ErrBatchIATNOC,
 } from './errors/index.js';
+import {
+  batchControlFieldPositions,
+  iatBatchHeaderFieldPositions,
+  getAddendaFieldPositions,
+} from './fieldPositions.js';
 
 const creditCodes = new Set([
   CheckingCredit, CheckingReturnNOCCredit, CheckingPrenoteCredit, CheckingZeroDollarRemittanceCredit,
@@ -155,6 +161,73 @@ export class IATBatch {
     return null;
   }
 
+  private verifyAll(): Error[] {
+    const errors: Error[] = [];
+    const push = (err: Error | null | undefined) => { if (err) errors.push(err); };
+
+    if (this.entries.length === 0) {
+      push(this.error('entries', ErrBatchNoEntries));
+    }
+    errors.push(...this.isFieldInclusionAll());
+
+    if (!this.validateOpts?.unequalServiceClassCode) {
+      if (this.header.serviceClassCode !== this.control.serviceClassCode) {
+        push(this.error('ServiceClassCode',
+          new ErrBatchHeaderControlEquality(this.header.serviceClassCode, this.control.serviceClassCode)));
+      }
+    }
+    if (this.header.odfiIdentification !== this.control.odfiIdentification) {
+      push(this.error('ODFIIdentification',
+        new ErrBatchHeaderControlEquality(this.header.odfiIdentification, this.control.odfiIdentification)));
+    }
+    if (this.header.batchNumber !== this.control.batchNumber) {
+      push(this.error('BatchNumber',
+        new ErrBatchHeaderControlEquality(this.header.batchNumber, this.control.batchNumber)));
+    }
+    if (!this.validateOpts?.allowSpecialCharacters) {
+      push(fieldError('CompanyIdentification', this.validators.isAlphanumeric(this.control.companyIdentification), this.control.companyIdentification));
+    }
+    if (!this.validateOpts?.customTraceNumbers) {
+      push(this.isSequenceAscending());
+    }
+    errors.push(...this.validateAllTotals());
+    if (!this.validateOpts?.customTraceNumbers) {
+      push(this.isTraceNumberODFI());
+      push(this.isAddendaSequence());
+    }
+    push(this.isCategory());
+
+    // Enrich BatchError instances with positional data
+    for (const err of errors) {
+      if (err instanceof BatchError && err.line === undefined) {
+        err.line = this.control.lineNumber;
+        const pos = batchControlFieldPositions[err.fieldName];
+        if (pos) {
+          err.startColumn = pos.start;
+          err.endColumn = pos.end;
+        } else {
+          err.startColumn = 0;
+          err.endColumn = 94;
+        }
+
+        // Add relatedLocation pointing to the header for header/control equality errors
+        if (err.cause instanceof ErrBatchHeaderControlEquality) {
+          const headerPos = iatBatchHeaderFieldPositions[err.fieldName];
+          if (headerPos && this.header.lineNumber) {
+            err.relatedLocations = [{
+              line: this.header.lineNumber,
+              startColumn: headerPos.start,
+              endColumn: headerPos.end,
+              message: `header value: ${err.cause.headerValue}`,
+            }];
+          }
+        }
+      }
+    }
+
+    return errors;
+  }
+
   build(): Error | null {
     const hdrErr = this.header.validate();
     if (hdrErr) return hdrErr;
@@ -247,6 +320,35 @@ export class IATBatch {
     return null;
   }
 
+  validateAll(): Error[] {
+    if (this.validateOpts?.skipAll || this.validateOpts?.bypassBatchValidation) return [];
+    const errors = this.verifyAll();
+
+    for (const entry of this.entries) {
+      if (entry.addenda17.length > 2) {
+        errors.push(this.error('Addenda17', new ErrBatchAddendaCount(entry.addenda17.length, 2)));
+      }
+      if (entry.addenda18.length > 5) {
+        errors.push(this.error('Addenda18', new ErrBatchAddendaCount(entry.addenda18.length, 5)));
+      }
+      if (this.header.serviceClassCode === AutomatedAccountingAdvices) {
+        errors.push(this.error('ServiceClassCode', ErrBatchServiceClassCode, this.header.serviceClassCode));
+      }
+      if (entry.isCorrection() || entry.category === CategoryNOC) {
+        if (this.header.iatIndicator !== IATCOR) {
+          errors.push(this.error('IATIndicator', new ErrBatchIATNOC(this.header.iatIndicator, IATCOR)));
+        }
+        if (this.header.standardEntryClassCode !== COR) {
+          errors.push(this.error('StandardEntryClassCode', new ErrBatchIATNOC(this.header.standardEntryClassCode, COR)));
+        }
+        if (nocInvalidCodes.has(entry.transactionCode)) {
+          errors.push(this.error('TransactionCode', ErrBatchTransactionCode, entry.transactionCode));
+        }
+      }
+    }
+    return errors;
+  }
+
   create(): Error | null {
     const err = this.build();
     if (err) return err;
@@ -261,6 +363,16 @@ export class IATBatch {
     const hashErr = this.isEntryHash();
     if (hashErr) return hashErr;
     return null;
+  }
+
+  validateAllTotals(): Error[] {
+    const errors: Error[] = [];
+    const push = (err: Error | null | undefined) => { if (err) errors.push(err); };
+    const [, countErr] = this.isBatchEntryCount();
+    push(countErr);
+    push(this.isBatchAmount());
+    push(this.isEntryHash());
+    return errors;
   }
 
   private isFieldInclusion(): Error | null {
@@ -299,6 +411,59 @@ export class IATBatch {
     const cErr = this.control.validate();
     if (cErr) return cErr;
     return null;
+  }
+
+  private isFieldInclusionAll(): Error[] {
+    const errors: Error[] = [];
+    const push = (err: Error | null | undefined) => { if (err) errors.push(err); };
+
+    // Enrich addenda validate() errors with position data
+    const enrichAddenda = (addenda: { typeCode: string; lineNumber: number; validate(): Error | null }, expectedTypeCode: string) => {
+      const err = addenda.validate();
+      if (err) {
+        if (err instanceof FieldError) {
+          err.line = addenda.lineNumber;
+          const positions = getAddendaFieldPositions(expectedTypeCode);
+          if (positions) {
+            const pos = positions[err.fieldName];
+            if (pos) {
+              err.startColumn = pos.start;
+              err.endColumn = pos.end;
+            }
+          }
+        }
+        errors.push(err);
+      }
+    };
+
+    errors.push(...this.header.validateAll());
+    for (const entry of this.entries) {
+      errors.push(...entry.validateAll());
+      push(this.addendaFieldInclusion(entry));
+
+      if (entry.addenda10) enrichAddenda(entry.addenda10, '10');
+      if (entry.addenda11) enrichAddenda(entry.addenda11, '11');
+      if (entry.addenda12) enrichAddenda(entry.addenda12, '12');
+      if (entry.addenda13) enrichAddenda(entry.addenda13, '13');
+      if (entry.addenda14) enrichAddenda(entry.addenda14, '14');
+      if (entry.addenda15) enrichAddenda(entry.addenda15, '15');
+      if (entry.addenda16) enrichAddenda(entry.addenda16, '16');
+      for (const a17 of entry.addenda17) enrichAddenda(a17, '17');
+      for (const a18 of entry.addenda18) enrichAddenda(a18, '18');
+
+      if (entry.category === CategoryNOC) {
+        if (!entry.addenda98) push(fieldError('Addenda98', ErrFieldInclusion));
+        else enrichAddenda(entry.addenda98, '98');
+      }
+      if (entry.category === CategoryReturn) {
+        if (!entry.addenda99) push(fieldError('Addenda99', ErrFieldInclusion));
+        else enrichAddenda(entry.addenda99, '99');
+        if (entry.addenda17.length > 0) push(fieldError('Addenda17', ErrFieldInclusion));
+        if (entry.addenda18.length > 0) push(fieldError('Addenda18', ErrFieldInclusion));
+      }
+    }
+    errors.push(...this.control.validateAll());
+    return errors;
   }
 
   private countEntryAddenda(): number {

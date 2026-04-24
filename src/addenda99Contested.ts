@@ -1,4 +1,5 @@
 import { entryAddendaPos } from './constants.js';
+import { enrichErrors, addenda99ContestedFieldPositions } from './fieldPositions.js';
 import type { ValidateOpts } from './validateOpts.js';
 import { Converters } from './utils/converters.js';
 import {
@@ -104,6 +105,22 @@ export class Addenda99Contested {
       }
     }
     return null;
+  }
+
+  /** ValidateAll performs all NACHA format rule checks and returns all errors found */
+  validateAll(): Error[] {
+    const errors: Error[] = [];
+    const push = (err: Error | null | undefined) => { if (err) errors.push(err); };
+
+    if (this.typeCode === '') push(fieldError('TypeCode', ErrConstructor, this.typeCode));
+    if (this.typeCode !== '99') push(fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode));
+    if (!this.validateOpts?.customReturnCodes) {
+      if (!isContestedReturnCode(this.contestedReturnCode)) {
+        push(fieldError('ContestedReturnCode', ErrAddenda99ContestedReturnCode, this.contestedReturnCode));
+      }
+    }
+
+    return enrichErrors(errors, this.lineNumber, addenda99ContestedFieldPositions);
   }
 
   contestedReturnCodeField(): string { return this.converters.stringField(this.contestedReturnCode, 3); }

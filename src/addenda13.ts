@@ -1,4 +1,5 @@
 import { entryAddendaPos } from './constants.js';
+import { enrichErrors, addenda13FieldPositions } from './fieldPositions.js';
 import type { ValidateOpts } from './validateOpts.js';
 import { Converters } from './utils/converters.js';
 import { Validators } from './utils/validators.js';
@@ -74,6 +75,31 @@ export class Addenda13 {
       if (ccErr) return fieldError('ODFIBranchCountryCode', ccErr, this.odfiBranchCountryCode);
     }
     return null;
+  }
+
+  /** ValidateAll performs all NACHA format rule checks and returns all errors found */
+  validateAll(): Error[] {
+    const errors: Error[] = [];
+    const push = (err: Error | null | undefined) => { if (err) errors.push(err); };
+
+    if (this.typeCode === '') push(fieldError('TypeCode', ErrConstructor, this.typeCode));
+    if (this.odfiName === '') push(fieldError('ODFIName', ErrConstructor, this.odfiName));
+    if (this.odfiIDNumberQualifier === '') push(fieldError('ODFIIDNumberQualifier', ErrConstructor, this.odfiIDNumberQualifier));
+    if (this.odfiIdentification === '') push(fieldError('ODFIIdentification', ErrConstructor, this.odfiIdentification));
+    if (this.odfiBranchCountryCode === '') push(fieldError('ODFIBranchCountryCode', ErrConstructor, this.odfiBranchCountryCode));
+    if (this.entryDetailSequenceNumber < 0) push(fieldError('EntryDetailSequenceNumber', ErrConstructor, this.entryDetailSequenceNumberField()));
+
+    if (this.typeCode !== '13') push(fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode));
+    if (this.validators.isIDNumberQualifier(this.odfiIDNumberQualifier)) {
+      push(fieldError('ODFIIDNumberQualifier', ErrIDNumberQualifier, this.odfiIDNumberQualifier));
+    }
+    if (!this.validateOpts?.allowSpecialCharacters) {
+      push(fieldError('ODFIName', this.validators.isAlphanumeric(this.odfiName), this.odfiName));
+      push(fieldError('ODFIIdentification', this.validators.isAlphanumeric(this.odfiIdentification), this.odfiIdentification));
+      push(fieldError('ODFIBranchCountryCode', this.validators.isAlphanumeric(this.odfiBranchCountryCode), this.odfiBranchCountryCode));
+    }
+
+    return enrichErrors(errors, this.lineNumber, addenda13FieldPositions);
   }
 
   private fieldInclusion(): Error | null {

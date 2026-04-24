@@ -1,4 +1,5 @@
 import { entryAddendaPos } from './constants.js';
+import { enrichErrors, addenda10FieldPositions } from './fieldPositions.js';
 import type { ValidateOpts } from './validateOpts.js';
 import { Converters } from './utils/converters.js';
 import { Validators } from './utils/validators.js';
@@ -70,6 +71,29 @@ export class Addenda10 {
       if (nameErr) return fieldError('Name', nameErr, this.name);
     }
     return null;
+  }
+
+  /** ValidateAll performs all NACHA format rule checks and returns all errors found */
+  validateAll(): Error[] {
+    const errors: Error[] = [];
+    const push = (err: Error | null | undefined) => { if (err) errors.push(err); };
+
+    // Field inclusion checks (inlined to collect all)
+    if (this.typeCode === '') push(fieldError('TypeCode', ErrConstructor, this.typeCode));
+    if (this.transactionTypeCode === '') push(fieldError('TransactionTypeCode', ErrConstructor, this.transactionTypeCode));
+    if (this.name === '') push(fieldError('Name', ErrConstructor, this.name));
+    if (this.entryDetailSequenceNumber < 0) push(fieldError('EntryDetailSequenceNumber', ErrConstructor, this.entryDetailSequenceNumberField()));
+
+    if (this.typeCode !== '10') push(fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode));
+    if (this.validators.isTransactionTypeCode(this.transactionTypeCode)) {
+      push(fieldError('TransactionTypeCode', new Error('invalid transaction type code'), this.transactionTypeCode));
+    }
+    if (!this.validateOpts?.allowSpecialCharacters) {
+      push(fieldError('ForeignTraceNumber', this.validators.isAlphanumeric(this.foreignTraceNumber), this.foreignTraceNumber));
+      push(fieldError('Name', this.validators.isAlphanumeric(this.name), this.name));
+    }
+
+    return enrichErrors(errors, this.lineNumber, addenda10FieldPositions);
   }
 
   private fieldInclusion(): Error | null {

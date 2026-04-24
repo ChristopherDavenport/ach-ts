@@ -16,6 +16,7 @@
 // under the License.
 
 import { fileHeaderPos } from './constants.js';
+import { enrichErrors, fileHeaderFieldPositions } from './fieldPositions.js';
 import type { ValidateOpts } from './validateOpts.js';
 import { Converters } from './utils/converters.js';
 import { Validators, CheckRoutingNumber } from './utils/validators.js';
@@ -231,6 +232,75 @@ export class FileHeader {
     }
 
     return null;
+  }
+
+  /** ValidateAll performs all NACHA format rule checks and returns all errors found */
+  validateAll(): Error[] {
+    return this.validateAllWith(this.validateOpts);
+  }
+
+  /** ValidateAllWith performs all NACHA format rule checks with custom options and returns all errors found */
+  validateAllWith(opts?: ValidateOpts): Error[] {
+    if (!opts) opts = {};
+    const errors: Error[] = [];
+    const push = (err: Error | null | undefined) => { if (err) errors.push(err); };
+
+    // Field inclusion checks (inlined to collect all)
+    if (!opts.allowMissingFileHeader) {
+      if (this.immediateDestination === '') push(fieldError('ImmediateDestination', ErrConstructor, this.immediateDestinationField()));
+      if (this.immediateOrigin === '') push(fieldError('ImmediateOrigin', ErrConstructor, this.immediateOriginField()));
+      if (this.fileCreationDate === '') push(fieldError('FileCreationDate', ErrConstructor, this.fileCreationDate));
+      if (this.fileIDModifier === '') push(fieldError('FileIDModifier', ErrConstructor, this.fileIDModifier));
+      if (this.recordSize === '') push(fieldError('recordSize', ErrConstructor, this.recordSize));
+      if (this.blockingFactor === '') push(fieldError('blockingFactor', ErrConstructor, this.blockingFactor));
+      if (this.formatCode === '') push(fieldError('FormatCode', ErrConstructor, this.formatCode));
+    }
+
+    // FileIDModifier must be uppercase alphanumeric
+    push(fieldError('FileIDModifier', this.validators.isUpperASCII(this.fileIDModifier), this.fileIDModifier));
+    if ([...this.fileIDModifier].length !== 1) {
+      push(fieldError('FileIDModifier', new ErrValidFieldLength(1), this.fileIDModifier));
+    }
+    if (this.recordSize !== '094') push(fieldError('recordSize', ErrRecordSize, this.recordSize));
+    if (this.blockingFactor !== '10') push(fieldError('blockingFactor', ErrBlockingFactor, this.blockingFactor));
+    if (this.formatCode !== '1') push(fieldError('FormatCode', ErrFormatCode, this.formatCode));
+
+    // ImmediateOrigin validation
+    if (!opts.bypassOriginValidation) {
+      if (this.immediateOrigin === '000000000' || this.immediateOrigin === '0000000000') {
+        push(fieldError('ImmediateOrigin', ErrConstructor, this.immediateOrigin));
+      }
+      if (opts.requireABAOrigin) {
+        push(fieldError('ImmediateOrigin', CheckRoutingNumber(this.immediateOrigin), this.immediateOrigin));
+      }
+    }
+
+    // ImmediateDestination validation
+    if (!opts.bypassDestinationValidation) {
+      if (this.immediateDestination === '000000000') {
+        push(fieldError('ImmediateDestination', ErrConstructor, this.immediateDestination));
+      }
+      push(fieldError('ImmediateDestination', CheckRoutingNumber(this.immediateDestination), this.immediateDestination));
+    }
+
+    // Alphanumeric checks (unless special characters allowed)
+    if (!this.validateOpts?.allowSpecialCharacters) {
+      push(fieldError('ImmediateDestinationName', this.validators.isAlphanumeric(this.immediateDestinationName), this.immediateDestinationName));
+      push(fieldError('ImmediateOriginName', this.validators.isAlphanumeric(this.immediateOriginName), this.immediateOriginName));
+      push(fieldError('ReferenceCode', this.validators.isAlphanumeric(this.referenceCode), this.referenceCode));
+    }
+
+    // File creation date/time validation
+    if (!this.validateOpts?.skipFileCreationValidation) {
+      if (this.fileCreationDate !== '' && this.fileCreationDateField() === '') {
+        push(fieldError('FileCreationDate', new Error('invalid FileCreationDate'), this.fileCreationDate));
+      }
+      if (this.fileCreationTime !== '' && this.fileCreationTimeField() === '') {
+        push(fieldError('FileCreationTime', new Error('invalid FileCreationTime'), this.fileCreationTime));
+      }
+    }
+
+    return enrichErrors(errors, this.lineNumber, fileHeaderFieldPositions);
   }
 
   /** fieldInclusion validates mandatory fields are not default values */

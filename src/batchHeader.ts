@@ -1,4 +1,5 @@
 import { batchHeaderPos } from './constants.js';
+import { enrichErrors, batchHeaderFieldPositions } from './fieldPositions.js';
 import type { ValidateOpts } from './validateOpts.js';
 import { Converters } from './utils/converters.js';
 import { Validators } from './utils/validators.js';
@@ -132,6 +133,41 @@ export class BatchHeader {
       if (identErr) return fieldError('CompanyIdentification', identErr, this.companyIdentification);
     }
     return null;
+  }
+
+  /** ValidateAll performs all NACHA format rule checks and returns all errors found */
+  validateAll(): Error[] {
+    const errors: Error[] = [];
+    const push = (err: Error | null | undefined) => { if (err) errors.push(err); };
+
+    // Field inclusion checks (inlined to collect all)
+    if (!this.validateOpts?.skipBatchHeaderCompanyValidation) {
+      if (this.serviceClassCode === 0) push(fieldError('ServiceClassCode', ErrConstructor, this.serviceClassCodeField()));
+      if (this.standardEntryClassCode === '') push(fieldError('StandardEntryClassCode', ErrConstructor, this.standardEntryClassCode));
+      if (this.companyName === '') push(fieldError('CompanyName', ErrConstructor, this.companyNameField()));
+      if (this.companyIdentification === '') push(fieldError('CompanyIdentification', ErrConstructor, this.companyIdentificationField()));
+      if (this.odfiIdentification === '') push(fieldError('ODFIIdentification', ErrConstructor, this.odfiIdentificationField()));
+    }
+
+    if (this.validators.isServiceClass(this.serviceClassCode)) {
+      push(fieldError('ServiceClassCode', ErrServiceClass, this.serviceClassCode));
+    }
+    if (!this.validateOpts?.skipBatchHeaderCompanyValidation) {
+      if (this.validators.isSECCode(this.standardEntryClassCode)) {
+        push(fieldError('StandardEntryClassCode', ErrSECCode, this.standardEntryClassCode));
+      }
+    }
+    if (this.validators.isOriginatorStatusCode(this.originatorStatusCode)) {
+      push(fieldError('OriginatorStatusCode', ErrOrigStatusCode, this.originatorStatusCode));
+    }
+    if (!this.validateOpts?.allowSpecialCharacters) {
+      push(fieldError('CompanyName', this.validators.isAlphanumeric(this.companyName), this.companyName));
+      push(fieldError('CompanyDiscretionaryData', this.validators.isAlphanumeric(this.companyDiscretionaryData), this.companyDiscretionaryData));
+      push(fieldError('CompanyEntryDescription', this.validators.isAlphanumeric(this.companyEntryDescription), this.companyEntryDescription));
+      push(fieldError('CompanyIdentification', this.validators.isAlphanumeric(this.companyIdentification), this.companyIdentification));
+    }
+
+    return enrichErrors(errors, this.lineNumber, batchHeaderFieldPositions);
   }
 
   private fieldInclusion(): Error | null {

@@ -16,6 +16,16 @@ export class BatchCCD extends Batch {
     return null;
   }
 
+  validateAll(): Error[] {
+    if (this.validateOpts?.skipAll || this.validateOpts?.bypassBatchValidation) return [];
+    const errors = this.verifyAll();
+    if (this.header.standardEntryClassCode !== CCD) {
+      errors.push(this.batchError('StandardEntryClassCode', ErrBatchSECType, CCD));
+    }
+    for (const inv of this.invalidEntries()) errors.push(inv.error);
+    return errors;
+  }
+
   invalidEntries(): InvalidEntry[] {
     const out: InvalidEntry[] = [];
     for (const entry of this.entries) {

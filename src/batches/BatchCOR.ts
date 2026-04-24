@@ -32,6 +32,24 @@ export class BatchCOR extends Batch {
     return null;
   }
 
+  validateAll(): Error[] {
+    if (this.validateOpts?.skipAll || this.validateOpts?.bypassBatchValidation) return [];
+    const errors = this.verifyAll();
+    const addenda98Err = this.isAddenda98();
+    if (addenda98Err) errors.push(addenda98Err);
+    if (this.header.standardEntryClassCode !== COR) {
+      errors.push(this.batchError('StandardEntryClassCode', ErrBatchSECType, COR));
+    }
+    if (this.control.totalCreditEntryDollarAmount !== 0) {
+      errors.push(this.batchError('TotalCreditEntryDollarAmount', ErrBatchAmountNonZero, this.control.totalCreditEntryDollarAmount));
+    }
+    if (this.control.totalDebitEntryDollarAmount !== 0) {
+      errors.push(this.batchError('TotalDebitEntryDollarAmount', ErrBatchAmountNonZero, this.control.totalDebitEntryDollarAmount));
+    }
+    for (const inv of this.invalidEntries()) errors.push(inv.error);
+    return errors;
+  }
+
   invalidEntries(): InvalidEntry[] {
     const out: InvalidEntry[] = [];
     for (const entry of this.entries) {

@@ -55,6 +55,7 @@ import {
   ErrInvalidJSON,
   ACHError,
 } from './errors/index.js';
+import { fileControlFieldPositions, advFileControlFieldPositions, fileHeaderFieldPositions } from './fieldPositions.js';
 
 const converters = new Converters();
 
@@ -364,6 +365,96 @@ export class File {
     return this.validateTotals();
   }
 
+  // --- ValidateAll ---
+
+  validateAll(): Error[] {
+    return this.validateAllWith(this.validateOpts);
+  }
+
+  validateAllWith(opts?: ValidateOpts): Error[] {
+    if (!opts) opts = {};
+    if (opts.skipAll) return [];
+
+    const errors: Error[] = [];
+    const push = (err: Error | null | undefined) => { if (err) errors.push(err); };
+
+    if (!opts.allowMissingFileHeader) {
+      errors.push(...this.header.validateAllWith(opts));
+    }
+
+    if (!this.isADV()) {
+      if (this.control.batchCount !== (this.batches.length + this.iatBatches.length)) {
+        push(new ErrFileCalculatedControlEquality(
+          'BatchCount', this.batches.length + this.iatBatches.length, this.control.batchCount,
+        ));
+      }
+
+      if (!opts.bypassBatchValidation) {
+        for (const b of this.batches) {
+          errors.push(...b.validateAll());
+        }
+      }
+
+      if (!opts.allowMissingFileControl) {
+        errors.push(...this.control.validateAll());
+      }
+      if (!opts.allowUnorderedBatchNumbers) {
+        push(this.isSequenceAscending());
+      }
+      errors.push(...this.validateAllTotals());
+    } else {
+      // ADV file
+      if (this.advControl.batchCount !== this.batches.length) {
+        push(new ErrFileCalculatedControlEquality(
+          'BatchCount', this.batches.length, this.advControl.batchCount,
+        ));
+      }
+      if (!opts.allowMissingFileControl) {
+        errors.push(...this.advControl.validateAll());
+      }
+      errors.push(...this.validateAllTotals());
+    }
+
+    // Enrich file-level errors with positional data
+    for (const err of errors) {
+      if (err instanceof ErrFileCalculatedControlEquality && err.line === undefined) {
+        const controlLine = this.isADV() ? this.advControl.lineNumber : this.control.lineNumber;
+        err.line = controlLine;
+        const positions = this.isADV() ? advFileControlFieldPositions : fileControlFieldPositions;
+        const pos = positions[err.field];
+        if (pos) {
+          err.startColumn = pos.start;
+          err.endColumn = pos.end;
+        } else {
+          // Full-line fallback for structural errors without a specific field
+          err.startColumn = 0;
+          err.endColumn = 94;
+        }
+
+        // Add relatedLocation pointing to the file header
+        if (this.header.lineNumber) {
+          const headerPos = fileHeaderFieldPositions[err.field];
+          if (headerPos) {
+            err.relatedLocations = [{
+              line: this.header.lineNumber,
+              startColumn: headerPos.start,
+              endColumn: headerPos.end,
+              message: `calculated value: ${err.calculatedValue}`,
+            }];
+          }
+        }
+      }
+
+      if (err instanceof ErrFileBatchNumberAscending && err.startColumn === undefined) {
+        // Full-line highlight on the offending batch header
+        err.startColumn = 0;
+        err.endColumn = 94;
+      }
+    }
+
+    return errors;
+  }
+
   // --- ValidateTotals ---
 
   validateTotals(): Error | null {
@@ -383,6 +474,23 @@ export class File {
       if (bErr) return bErr;
     }
     return this.isBatchCount(isADV);
+  }
+
+  validateAllTotals(): Error[] {
+    const isADV = this.isADV();
+    const errors: Error[] = [];
+    const push = (err: Error | null | undefined) => { if (err) errors.push(err); };
+    push(this.isEntryAddendaCount(isADV));
+    push(this.isFileAmount(isADV));
+    push(this.isEntryHash(isADV));
+    for (const b of this.batches) {
+      errors.push(...b.validateAllTotals());
+    }
+    for (const b of this.iatBatches) {
+      errors.push(...b.validateAllTotals());
+    }
+    push(this.isBatchCount(isADV));
+    return errors;
   }
 
   private isBatchCount(isADV: boolean): Error | null {
@@ -495,10 +603,13 @@ export class File {
   private isSequenceAscending(): Error | null {
     let lastSeq = 0;
     for (const batch of this.batches) {
-      const current = batch.getHeader().batchNumber;
+      const header = batch.getHeader();
+      const current = header.batchNumber;
       if (!this.validateOpts?.customTraceNumbers) {
         if (current <= lastSeq) {
-          return new ErrFileBatchNumberAscending(lastSeq, current);
+          const err = new ErrFileBatchNumberAscending(lastSeq, current);
+          err.line = header.lineNumber;
+          return err;
         }
       }
       lastSeq = current;

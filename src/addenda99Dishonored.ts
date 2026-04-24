@@ -1,4 +1,5 @@
 import { entryAddendaPos } from './constants.js';
+import { enrichErrors, addenda99DishonoredFieldPositions } from './fieldPositions.js';
 import type { ValidateOpts } from './validateOpts.js';
 import { Converters } from './utils/converters.js';
 import {
@@ -90,6 +91,22 @@ export class Addenda99Dishonored {
       }
     }
     return null;
+  }
+
+  /** ValidateAll performs all NACHA format rule checks and returns all errors found */
+  validateAll(): Error[] {
+    const errors: Error[] = [];
+    const push = (err: Error | null | undefined) => { if (err) errors.push(err); };
+
+    if (this.typeCode === '') push(fieldError('TypeCode', ErrConstructor, this.typeCode));
+    if (this.typeCode !== '99') push(fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode));
+    if (!this.validateOpts?.customReturnCodes) {
+      if (!isDishonoredReturnCode(this.dishonoredReturnReasonCode)) {
+        push(fieldError('DishonoredReturnReasonCode', ErrAddenda99DishonoredReturnCode, this.dishonoredReturnReasonCode));
+      }
+    }
+
+    return enrichErrors(errors, this.lineNumber, addenda99DishonoredFieldPositions);
   }
 
   dishonoredReturnReasonCodeField(): string { return this.converters.stringField(this.dishonoredReturnReasonCode, 3); }

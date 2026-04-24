@@ -1,4 +1,5 @@
 import { fileControlPos } from './constants.js';
+import { enrichErrors, advFileControlFieldPositions } from './fieldPositions.js';
 import { Converters } from './utils/converters.js';
 import { fieldError, ErrConstructor } from './errors/index.js';
 
@@ -53,6 +54,19 @@ export class ADVFileControl {
 
   validate(): Error | null {
     return this.fieldInclusion();
+  }
+
+  /** ValidateAll performs all NACHA format rule checks and returns all errors found */
+  validateAll(): Error[] {
+    const errors: Error[] = [];
+    const push = (err: Error | null | undefined) => { if (err) errors.push(err); };
+
+    if (this.batchCount === 0) push(fieldError('BatchCount', ErrConstructor, this.batchCountField()));
+    if (this.blockCount === 0) push(fieldError('BlockCount', ErrConstructor, this.blockCountField()));
+    if (this.entryAddendaCount === 0) push(fieldError('EntryAddendaCount', ErrConstructor, this.entryAddendaCountField()));
+    if (this.entryHash === 0) push(fieldError('EntryHash', ErrConstructor, this.entryHashField()));
+
+    return enrichErrors(errors, this.lineNumber, advFileControlFieldPositions);
   }
 
   private fieldInclusion(): Error | null {

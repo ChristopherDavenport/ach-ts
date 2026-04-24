@@ -3,6 +3,7 @@ import {
   CategoryForward,
   CIE, MTE,
 } from './constants.js';
+import { enrichErrors, entryDetailFieldPositions } from './fieldPositions.js';
 import type { ValidateOpts } from './validateOpts.js';
 import { Converters } from './utils/converters.js';
 import { Validators, CalculateCheckDigit, readRunes } from './utils/validators.js';
@@ -190,6 +191,50 @@ export class EntryDetail {
     }
 
     return null;
+  }
+
+  /** ValidateAll performs all NACHA format rule checks and returns all errors found */
+  validateAll(): Error[] {
+    const errors: Error[] = [];
+    const push = (err: Error | null | undefined) => { if (err) errors.push(err); };
+
+    // Field inclusion checks (inlined to collect all)
+    if (this.transactionCode === 0) push(fieldError('TransactionCode', ErrConstructor, String(this.transactionCode)));
+    if (this.rdfiIdentification === '') push(fieldError('RDFIIdentification', ErrConstructor, this.rdfiIdentificationField()));
+    if (this.dfiAccountNumber === '') push(fieldError('DFIAccountNumber', ErrConstructor, this.dfiAccountNumber));
+    if (this.individualName === '') push(fieldError('IndividualName', ErrConstructor, this.individualName));
+    if (this.traceNumber === '') push(fieldError('TraceNumber', ErrConstructor, this.traceNumberField()));
+
+    // Transaction code validation
+    if (this.validateOpts?.checkTransactionCode) {
+      push(fieldError('TransactionCode', this.validateOpts.checkTransactionCode(this.transactionCode), String(this.transactionCode)));
+    } else {
+      push(fieldError('TransactionCode', this.validators.isTransactionCode(this.transactionCode), String(this.transactionCode)));
+    }
+
+    if (this.amount < 0) push(fieldError('Amount', ErrNegativeAmount, this.amount));
+    if (this.amount > NachaEntryAmountLimit) {
+      push(fieldError('Amount', new Error(`does not match formatted value ${this.amountField()}`), this.amount));
+    }
+
+    if (!this.validateOpts?.allowSpecialCharacters) {
+      push(fieldError('DFIAccountNumber', this.validators.isAlphanumeric(this.dfiAccountNumber), this.dfiAccountNumber));
+      push(fieldError('IdentificationNumber', this.validators.isAlphanumeric(this.identificationNumber), this.identificationNumber));
+      push(fieldError('IndividualName', this.validators.isAlphanumeric(this.individualName), this.individualName));
+      push(fieldError('DiscretionaryData', this.validators.isAlphanumeric(this.discretionaryData), this.discretionaryData));
+    }
+
+    if (!this.validateOpts?.allowInvalidCheckDigit) {
+      const calculated = CalculateCheckDigit(this.rdfiIdentificationField());
+      const edCheckDigit = parseInt(this.checkDigit, 10);
+      if (isNaN(edCheckDigit)) {
+        push(fieldError('CheckDigit', new Error('invalid check digit'), this.checkDigit));
+      } else if (calculated !== edCheckDigit) {
+        push(fieldError('RDFIIdentification', new ErrValidCheckDigit(calculated), this.checkDigit));
+      }
+    }
+
+    return enrichErrors(errors, this.lineNumber, entryDetailFieldPositions);
   }
 
   private fieldInclusion(): Error | null {

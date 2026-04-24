@@ -1,4 +1,5 @@
 import { batchHeaderPos } from './constants.js';
+import { enrichErrors, iatBatchHeaderFieldPositions } from './fieldPositions.js';
 import type { ValidateOpts } from './validateOpts.js';
 import { Converters } from './utils/converters.js';
 import { Validators } from './utils/validators.js';
@@ -156,6 +157,40 @@ export class IATBatchHeader {
       return fieldError('OriginatorStatusCode', this.validators.isOriginatorStatusCode(this.originatorStatusCode)!, String(this.originatorStatusCode));
     }
     return null;
+  }
+
+  /** ValidateAll performs all NACHA format rule checks and returns all errors found */
+  validateAll(): Error[] {
+    const errors: Error[] = [];
+    const push = (err: Error | null | undefined) => { if (err) errors.push(err); };
+
+    // Field inclusion checks (inlined to collect all)
+    if (this.serviceClassCode === 0) push(fieldError('ServiceClassCode', ErrFieldInclusion, String(this.serviceClassCode)));
+    if (this.foreignExchangeIndicator === '') push(fieldError('ForeignExchangeIndicator', ErrFieldInclusion, this.foreignExchangeIndicator));
+    if (this.foreignExchangeReferenceIndicator === 0 && this.foreignExchangeIndicator !== 'FF') {
+      push(fieldError('ForeignExchangeReferenceIndicator', ErrFieldRequired, String(this.foreignExchangeReferenceIndicator)));
+    }
+    if (this.isoDestinationCountryCode === '') push(fieldError('ISODestinationCountryCode', ErrFieldInclusion, this.isoDestinationCountryCode));
+    if (this.originatorIdentification === '') push(fieldError('OriginatorIdentification', ErrFieldInclusion, this.originatorIdentification));
+    if (this.standardEntryClassCode === '') push(fieldError('StandardEntryClassCode', ErrFieldInclusion, this.standardEntryClassCode));
+    if (this.companyEntryDescription === '') push(fieldError('CompanyEntryDescription', ErrFieldInclusion, this.companyEntryDescription));
+    if (this.isoOriginatingCurrencyCode === '') push(fieldError('ISOOriginatingCurrencyCode', ErrFieldInclusion, this.isoOriginatingCurrencyCode));
+    if (this.isoDestinationCurrencyCode === '') push(fieldError('ISODestinationCurrencyCode', ErrFieldInclusion, this.isoDestinationCurrencyCode));
+    if (this.odfiIdentification === '') push(fieldError('ODFIIdentification', ErrFieldInclusion, this.odfiIdentificationField()));
+
+    push(fieldError('ServiceClassCode', this.validators.isServiceClass(this.serviceClassCode), String(this.serviceClassCode)));
+    push(fieldError('ForeignExchangeIndicator', this.isForeignExchangeIndicator(), this.foreignExchangeIndicator));
+    push(fieldError('ForeignExchangeReferenceIndicator', this.isForeignExchangeReferenceIndicator(), String(this.foreignExchangeReferenceIndicator)));
+    if (!isValidISO3166(this.isoDestinationCountryCode)) push(fieldError('ISODestinationCountryCode', ErrValidISO3166, this.isoDestinationCountryCode));
+    push(fieldError('StandardEntryClassCode', this.validators.isSECCode(this.standardEntryClassCode), this.standardEntryClassCode));
+    if (!this.validateOpts?.allowSpecialCharacters) {
+      push(fieldError('CompanyEntryDescription', this.validators.isAlphanumeric(this.companyEntryDescription), this.companyEntryDescription));
+    }
+    if (!isValidISO4217(this.isoOriginatingCurrencyCode)) push(fieldError('ISOOriginatingCurrencyCode', ErrValidISO4217, this.isoOriginatingCurrencyCode));
+    if (!isValidISO4217(this.isoDestinationCurrencyCode)) push(fieldError('ISODestinationCurrencyCode', ErrValidISO4217, this.isoDestinationCurrencyCode));
+    push(fieldError('OriginatorStatusCode', this.validators.isOriginatorStatusCode(this.originatorStatusCode), String(this.originatorStatusCode)));
+
+    return enrichErrors(errors, this.lineNumber, iatBatchHeaderFieldPositions);
   }
 
   private isForeignExchangeIndicator(): Error | null {

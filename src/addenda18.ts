@@ -1,4 +1,5 @@
 import { entryAddendaPos } from './constants.js';
+import { enrichErrors, addenda18FieldPositions } from './fieldPositions.js';
 import type { ValidateOpts } from './validateOpts.js';
 import { Converters } from './utils/converters.js';
 import { Validators } from './utils/validators.js';
@@ -75,6 +76,34 @@ export class Addenda18 {
       }
     }
     return null;
+  }
+
+  /** ValidateAll performs all NACHA format rule checks and returns all errors found */
+  validateAll(): Error[] {
+    const errors: Error[] = [];
+    const push = (err: Error | null | undefined) => { if (err) errors.push(err); };
+
+    if (this.typeCode === '') push(fieldError('TypeCode', ErrConstructor, this.typeCode));
+    if (this.foreignCorrespondentBankName === '') push(fieldError('ForeignCorrespondentBankName', ErrConstructor, this.foreignCorrespondentBankName));
+    if (this.foreignCorrespondentBankIDNumberQualifier === '') push(fieldError('ForeignCorrespondentBankIDNumberQualifier', ErrConstructor, this.foreignCorrespondentBankIDNumberQualifier));
+    if (this.foreignCorrespondentBankIDNumber === '') push(fieldError('ForeignCorrespondentBankIDNumber', ErrConstructor, this.foreignCorrespondentBankIDNumber));
+    if (this.foreignCorrespondentBankBranchCountryCode === '') push(fieldError('ForeignCorrespondentBankBranchCountryCode', ErrConstructor, this.foreignCorrespondentBankBranchCountryCode));
+    if (this.sequenceNumber === 0) push(fieldError('SequenceNumber', ErrConstructor, this.sequenceNumberField()));
+    if (this.entryDetailSequenceNumber < 0) push(fieldError('EntryDetailSequenceNumber', ErrConstructor, this.entryDetailSequenceNumberField()));
+
+    if (this.typeCode !== '18') push(fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode));
+    if (!this.validateOpts?.allowSpecialCharacters) {
+      for (const [name, val] of [
+        ['ForeignCorrespondentBankName', this.foreignCorrespondentBankName],
+        ['ForeignCorrespondentBankIDNumberQualifier', this.foreignCorrespondentBankIDNumberQualifier],
+        ['ForeignCorrespondentBankIDNumber', this.foreignCorrespondentBankIDNumber],
+        ['ForeignCorrespondentBankBranchCountryCode', this.foreignCorrespondentBankBranchCountryCode],
+      ] as const) {
+        push(fieldError(name, this.validators.isAlphanumeric(val), val));
+      }
+    }
+
+    return enrichErrors(errors, this.lineNumber, addenda18FieldPositions);
   }
 
   private fieldInclusion(): Error | null {

@@ -1,4 +1,5 @@
 import { entryAddendaPos } from './constants.js';
+import { enrichErrors, addenda05FieldPositions } from './fieldPositions.js';
 import type { ValidateOpts } from './validateOpts.js';
 import { Converters } from './utils/converters.js';
 import { Validators } from './utils/validators.js';
@@ -72,6 +73,28 @@ export class Addenda05 {
       return fieldError('PaymentRelatedInformation', ErrExceedsFieldLength, this.paymentRelatedInformation);
     }
     return null;
+  }
+
+  /** ValidateAll performs all NACHA format rule checks and returns all errors found */
+  validateAll(): Error[] {
+    const errors: Error[] = [];
+    const push = (err: Error | null | undefined) => { if (err) errors.push(err); };
+
+    // Field inclusion checks (inlined to collect all)
+    if (this.typeCode === '') push(fieldError('TypeCode', ErrConstructor, this.typeCode));
+    if (this.sequenceNumber === 0) push(fieldError('SequenceNumber', ErrConstructor, this.sequenceNumberField()));
+    if (this.entryDetailSequenceNumber < 0) push(fieldError('EntryDetailSequenceNumber', ErrConstructor, this.entryDetailSequenceNumberField()));
+
+    if (this.validators.isTypeCode(this.typeCode)) push(fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode));
+    if (this.typeCode !== '05') push(fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode));
+    if (!this.validateOpts?.allowSpecialCharacters) {
+      push(fieldError('PaymentRelatedInformation', this.validators.isAlphanumeric(this.paymentRelatedInformation), this.paymentRelatedInformation));
+    }
+    if ([...this.paymentRelatedInformation].length > 80) {
+      push(fieldError('PaymentRelatedInformation', ErrExceedsFieldLength, this.paymentRelatedInformation));
+    }
+
+    return enrichErrors(errors, this.lineNumber, addenda05FieldPositions);
   }
 
   private fieldInclusion(): Error | null {

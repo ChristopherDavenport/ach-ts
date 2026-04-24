@@ -1,4 +1,5 @@
 import { entryAddendaPos } from './constants.js';
+import { enrichErrors, addenda98FieldPositions } from './fieldPositions.js';
 import { Converters } from './utils/converters.js';
 import {
   fieldError,
@@ -128,6 +129,19 @@ export class Addenda98 {
       return fieldError('CorrectedData', ErrAddenda98CorrectedData, this.correctedData);
     }
     return null;
+  }
+
+  /** ValidateAll performs all NACHA format rule checks and returns all errors found */
+  validateAll(): Error[] {
+    const errors: Error[] = [];
+    const push = (err: Error | null | undefined) => { if (err) errors.push(err); };
+
+    if (this.typeCode === '') push(fieldError('TypeCode', ErrConstructor, this.typeCode));
+    if (this.typeCode !== '98') push(fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode));
+    if (!changeCodeDict.has(this.changeCode)) push(fieldError('ChangeCode', ErrAddenda98ChangeCode, this.changeCode));
+    if (this.correctedData === '') push(fieldError('CorrectedData', ErrAddenda98CorrectedData, this.correctedData));
+
+    return enrichErrors(errors, this.lineNumber, addenda98FieldPositions);
   }
 
   changeCodeField(): ChangeCode | null {

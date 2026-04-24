@@ -29,6 +29,7 @@ import { Converters } from './utils/converters.js';
 import { Validators, CheckRoutingNumber, CalculateCheckDigit } from './utils/validators.js';
 import {
   fieldError,
+  FieldError,
   ErrBatchNoEntries, ErrBatchADVCount, ErrBatchAddendaIndicator,
   ErrBatchOriginatorDNE, ErrBatchSECType, ErrBatchServiceClassCode,
   ErrBatchTransactionCode, ErrBatchAmountNonZero, ErrBatchAmountZero,
@@ -53,6 +54,10 @@ import {
   ErrBatchAmount,
   ErrBatchIATNOC,
 } from './errors/index.js';
+import {
+  batchControlFieldPositions, advBatchControlFieldPositions, batchHeaderFieldPositions,
+  entryDetailFieldPositions, getAddendaFieldPositions, enrichErrors,
+} from './fieldPositions.js';
 
 // Offset contains the associated information to append an 'Offset Record' on an ACH batch during Create.
 export interface Offset {
@@ -85,7 +90,9 @@ export interface Batcher {
   deleteADVEntries(del: (e: ADVEntryDetail) => boolean): void;
   create(): Error | null;
   validate(): Error | null;
+  validateAll(): Error[];
   validateTotals(): Error | null;
+  validateAllTotals(): Error[];
   setID(id: string): void;
   id(): string;
   category(): string;
@@ -162,6 +169,10 @@ export class Batch implements Batcher {
     return new Error('use an implementation of batch or NewBatch');
   }
 
+  validateAll(): Error[] {
+    return [new Error('use an implementation of batch or NewBatch')];
+  }
+
   validateTotals(): Error | null {
     let err = this.isBatchEntryCount();
     if (err) return err;
@@ -170,6 +181,15 @@ export class Batch implements Batcher {
     err = this.isEntryHash();
     if (err) return err;
     return null;
+  }
+
+  validateAllTotals(): Error[] {
+    const errors: Error[] = [];
+    const push = (err: Error | null) => { if (err) errors.push(err); };
+    push(this.isBatchEntryCount());
+    push(this.isBatchAmount());
+    push(this.isEntryHash());
+    return errors;
   }
 
   setValidation(opts: ValidateOpts | undefined): void {
@@ -399,6 +419,103 @@ export class Batch implements Batcher {
     if (err) return err;
 
     return null;
+  }
+
+  /** verifyAll checks basic valid NACHA batch rules, collecting all errors. */
+  protected verifyAll(): Error[] {
+    const errors: Error[] = [];
+    const push = (err: Error | null) => { if (err) errors.push(err); };
+
+    // No entries in batch
+    if (this.entries.length === 0 && this.advEntries.length === 0) {
+      push(this.batchError('entries', ErrBatchNoEntries));
+    }
+
+    // verify field inclusion
+    errors.push(...this.isFieldInclusionAll());
+
+    if (!this.isADV()) {
+      if (!(this.validateOpts?.unequalServiceClassCode) &&
+        this.header.serviceClassCode !== this.control.serviceClassCode) {
+        push(this.batchError('ServiceClassCode',
+          new ErrBatchHeaderControlEquality(this.header.serviceClassCode, this.control.serviceClassCode)));
+      }
+      if (this.header.companyIdentification !== this.control.companyIdentification &&
+        !(this.validateOpts?.bypassCompanyIdentificationMatch)) {
+        push(this.batchError('CompanyIdentification',
+          new ErrBatchHeaderControlEquality(this.header.companyIdentification, this.control.companyIdentification)));
+      }
+      if (this.header.odfiIdentification !== this.control.odfiIdentification) {
+        push(this.batchError('ODFIIdentification',
+          new ErrBatchHeaderControlEquality(this.header.odfiIdentification, this.control.odfiIdentification)));
+      }
+      if (this.header.batchNumber !== this.control.batchNumber) {
+        push(this.batchError('BatchNumber',
+          new ErrBatchHeaderControlEquality(this.header.batchNumber, this.control.batchNumber)));
+      }
+    } else {
+      if (!(this.validateOpts?.unequalServiceClassCode) &&
+        this.header.serviceClassCode !== this.advControl.serviceClassCode) {
+        push(this.batchError('ServiceClassCode',
+          new ErrBatchHeaderControlEquality(this.header.serviceClassCode, this.advControl.serviceClassCode)));
+      }
+      if (this.header.odfiIdentification !== this.advControl.odfiIdentification) {
+        push(this.batchError('ODFIIdentification',
+          new ErrBatchHeaderControlEquality(this.header.odfiIdentification, this.advControl.odfiIdentification)));
+      }
+      if (this.header.batchNumber !== this.advControl.batchNumber) {
+        push(this.batchError('BatchNumber',
+          new ErrBatchHeaderControlEquality(this.header.batchNumber, this.advControl.batchNumber)));
+      }
+    }
+
+    errors.push(...this.validateAllTotals());
+
+    if (!this.validateOpts?.customTraceNumbers) {
+      push(this.isSequenceAscending());
+    }
+
+    push(this.isOriginatorDNE());
+
+    if (!this.validateOpts?.customTraceNumbers) {
+      push(this.isTraceNumberODFI());
+      push(this.isAddendaSequence());
+    }
+
+    push(this.isCategory());
+
+    // Enrich BatchError instances with positional data
+    for (const err of errors) {
+      if (err instanceof BatchError && err.line === undefined) {
+        const controlLine = this.isADV() ? this.advControl.lineNumber : this.control.lineNumber;
+        err.line = controlLine;
+        const positions = this.isADV() ? advBatchControlFieldPositions : batchControlFieldPositions;
+        const pos = positions[err.fieldName];
+        if (pos) {
+          err.startColumn = pos.start;
+          err.endColumn = pos.end;
+        } else {
+          // Full-line fallback for structural errors without a specific field
+          err.startColumn = 0;
+          err.endColumn = 94;
+        }
+
+        // Add relatedLocation pointing to the header for header/control equality errors
+        if (err.cause instanceof ErrBatchHeaderControlEquality) {
+          const headerPos = batchHeaderFieldPositions[err.fieldName];
+          if (headerPos && this.header.lineNumber) {
+            err.relatedLocations = [{
+              line: this.header.lineNumber,
+              startColumn: headerPos.start,
+              endColumn: headerPos.end,
+              message: `header value: ${err.cause.headerValue}`,
+            }];
+          }
+        }
+      }
+    }
+
+    return errors;
   }
 
   // --- Validation helpers ---
@@ -684,6 +801,72 @@ export class Batch implements Batcher {
       if (entryErr) return entryErr;
     }
     return this.advControl.validate();
+  }
+
+  /** isFieldInclusionAll validates field inclusion across all records, collecting all errors. */
+  protected isFieldInclusionAll(): Error[] {
+    const errors: Error[] = [];
+    const push = (err: Error | null | undefined) => { if (err) errors.push(err); };
+
+    errors.push(...this.header.validateAll());
+
+    if (!this.isADV()) {
+      for (const entry of this.entries) {
+        errors.push(...entry.validateAll());
+
+        switch (this.header.standardEntryClassCode) {
+          case ARC: case BOC: case CIE: case DNE: case ENR: case MTE:
+          case POP: case POS: case PPD: case RCK: case SHR: case TEL: case WEB:
+            if (!this.validateOpts?.allowEmptyIndividualName) {
+              const nameErr = fieldError('IndividualName', this.validators.isNonZero(entry.individualName), entry.individualName);
+              if (nameErr) {
+                nameErr.line = entry.lineNumber;
+                const pos = entryDetailFieldPositions['IndividualName'];
+                if (pos) {
+                  nameErr.startColumn = pos.start;
+                  nameErr.endColumn = pos.end;
+                }
+                errors.push(nameErr);
+              }
+            }
+            break;
+        }
+
+        // Enrich addenda validate() errors with position data
+        const enrichAddenda = (addenda: { typeCode: string; lineNumber: number; validate(): Error | null }, expectedTypeCode: string, opts?: { isRefused?: boolean; isDishonored?: boolean; isContested?: boolean }) => {
+          const err = addenda.validate();
+          if (err) {
+            if (err instanceof FieldError) {
+              err.line = addenda.lineNumber;
+              const positions = getAddendaFieldPositions(expectedTypeCode, opts);
+              if (positions) {
+                const pos = positions[err.fieldName];
+                if (pos) {
+                  err.startColumn = pos.start;
+                  err.endColumn = pos.end;
+                }
+              }
+            }
+            errors.push(err);
+          }
+        };
+
+        if (entry.addenda02) enrichAddenda(entry.addenda02, '02');
+        for (const a05 of entry.addenda05) enrichAddenda(a05, '05');
+        if (entry.addenda98) enrichAddenda(entry.addenda98, '98');
+        if (entry.addenda98Refused) enrichAddenda(entry.addenda98Refused, '98', { isRefused: true });
+        if (entry.addenda99) enrichAddenda(entry.addenda99, '99');
+        if (entry.addenda99Dishonored) enrichAddenda(entry.addenda99Dishonored, '99', { isDishonored: true });
+        if (entry.addenda99Contested) enrichAddenda(entry.addenda99Contested, '99', { isContested: true });
+      }
+      errors.push(...this.control.validateAll());
+    } else {
+      for (const entry of this.advEntries) {
+        push(entry.validate());
+      }
+      errors.push(...this.advControl.validateAll());
+    }
+    return errors;
   }
 
   // --- Addenda field inclusion checks ---

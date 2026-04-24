@@ -1,4 +1,5 @@
 import { batchControlPos } from './constants.js';
+import { enrichErrors, batchControlFieldPositions } from './fieldPositions.js';
 import type { ValidateOpts } from './validateOpts.js';
 import { Converters } from './utils/converters.js';
 import { Validators } from './utils/validators.js';
@@ -115,6 +116,39 @@ export class BatchControl {
       );
     }
     return null;
+  }
+
+  /** ValidateAll performs all NACHA format rule checks and returns all errors found */
+  validateAll(): Error[] {
+    const errors: Error[] = [];
+    const push = (err: Error | null | undefined) => { if (err) errors.push(err); };
+
+    // Field inclusion checks (inlined to collect all)
+    if (this.serviceClassCode === 0) push(fieldError('ServiceClassCode', ErrConstructor, this.serviceClassCodeField()));
+    if (this.odfiIdentification === '') push(fieldError('ODFIIdentification', ErrConstructor, this.odfiIdentificationField()));
+
+    if (this.validators.isServiceClass(this.serviceClassCode)) {
+      push(fieldError('ServiceClassCode', ErrServiceClass, this.serviceClassCode));
+    }
+    if (!this.validateOpts?.allowSpecialCharacters) {
+      push(fieldError('CompanyIdentification', this.validators.isAlphanumeric(this.companyIdentification), this.companyIdentification));
+    }
+    if (this.totalDebitEntryDollarAmount > BatchControl.NachaBatchDebitCreditLimit) {
+      push(fieldError(
+        'TotalDebitEntryDollarAmount',
+        new Error(`does not match formatted value ${this.totalDebitEntryDollarAmountField()}`),
+        this.totalDebitEntryDollarAmount,
+      ));
+    }
+    if (this.totalCreditEntryDollarAmount > BatchControl.NachaBatchDebitCreditLimit) {
+      push(fieldError(
+        'TotalCreditEntryDollarAmount',
+        new Error(`does not match formatted value ${this.totalCreditEntryDollarAmountField()}`),
+        this.totalCreditEntryDollarAmount,
+      ));
+    }
+
+    return enrichErrors(errors, this.lineNumber, batchControlFieldPositions);
   }
 
   private fieldInclusion(): Error | null {

@@ -1,4 +1,5 @@
 import { entryAddendaPos } from './constants.js';
+import { enrichErrors, addenda16FieldPositions } from './fieldPositions.js';
 import type { ValidateOpts } from './validateOpts.js';
 import { Converters } from './utils/converters.js';
 import { Validators } from './utils/validators.js';
@@ -64,6 +65,25 @@ export class Addenda16 {
       if (cpErr) return fieldError('ReceiverCountryPostalCode', cpErr, this.receiverCountryPostalCode);
     }
     return null;
+  }
+
+  /** ValidateAll performs all NACHA format rule checks and returns all errors found */
+  validateAll(): Error[] {
+    const errors: Error[] = [];
+    const push = (err: Error | null | undefined) => { if (err) errors.push(err); };
+
+    if (this.typeCode === '') push(fieldError('TypeCode', ErrConstructor, this.typeCode));
+    if (this.receiverCityStateProvince === '') push(fieldError('ReceiverCityStateProvince', ErrConstructor, this.receiverCityStateProvince));
+    if (this.receiverCountryPostalCode === '') push(fieldError('ReceiverCountryPostalCode', ErrConstructor, this.receiverCountryPostalCode));
+    if (this.entryDetailSequenceNumber < 0) push(fieldError('EntryDetailSequenceNumber', ErrConstructor, this.entryDetailSequenceNumberField()));
+
+    if (this.typeCode !== '16') push(fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode));
+    if (!this.validateOpts?.allowSpecialCharacters) {
+      push(fieldError('ReceiverCityStateProvince', this.validators.isAlphanumeric(this.receiverCityStateProvince), this.receiverCityStateProvince));
+      push(fieldError('ReceiverCountryPostalCode', this.validators.isAlphanumeric(this.receiverCountryPostalCode), this.receiverCountryPostalCode));
+    }
+
+    return enrichErrors(errors, this.lineNumber, addenda16FieldPositions);
   }
 
   private fieldInclusion(): Error | null {

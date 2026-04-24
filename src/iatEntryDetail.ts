@@ -1,4 +1,5 @@
 import { entryDetailPos, CategoryForward } from './constants.js';
+import { enrichErrors, iatEntryDetailFieldPositions } from './fieldPositions.js';
 import type { ValidateOpts } from './validateOpts.js';
 import { Converters } from './utils/converters.js';
 import { Validators } from './utils/validators.js';
@@ -115,6 +116,36 @@ export class IATEntryDetail {
       return fieldError('RDFIIdentification', new ErrValidCheckDigit(calculated), this.checkDigit);
     }
     return null;
+  }
+
+  /** ValidateAll performs all NACHA format rule checks and returns all errors found */
+  validateAll(): Error[] {
+    const errors: Error[] = [];
+    const push = (err: Error | null | undefined) => { if (err) errors.push(err); };
+
+    // Field inclusion checks (inlined to collect all)
+    if (this.transactionCode === 0) push(fieldError('TransactionCode', ErrConstructor, String(this.transactionCode)));
+    if (this.rdfiIdentification === '') push(fieldError('RDFIIdentification', ErrConstructor, this.rdfiIdentificationField()));
+    if (this.addendaRecords === 0) push(fieldError('AddendaRecords', ErrConstructor, String(this.addendaRecords)));
+    if (this.dfiAccountNumber === '') push(fieldError('DFIAccountNumber', ErrConstructor, this.dfiAccountNumber));
+    if (this.addendaRecordIndicator === 0) push(fieldError('AddendaRecordIndicator', ErrConstructor, String(this.addendaRecordIndicator)));
+    if (this.traceNumber === '') push(fieldError('TraceNumber', ErrConstructor, this.traceNumberField()));
+
+    if (this.validateOpts?.checkTransactionCode) {
+      push(fieldError('TransactionCode', this.validateOpts.checkTransactionCode(this.transactionCode), String(this.transactionCode)));
+    } else {
+      push(fieldError('TransactionCode', this.validators.isTransactionCode(this.transactionCode), String(this.transactionCode)));
+    }
+    if (!this.validateOpts?.allowSpecialCharacters) {
+      push(fieldError('DFIAccountNumber', this.validators.isAlphanumeric(this.dfiAccountNumber), this.dfiAccountNumber));
+    }
+    const calculated = CalculateCheckDigit(this.rdfiIdentificationField());
+    const edCheckDigit = parseInt(this.checkDigit, 10);
+    if (isNaN(edCheckDigit) || calculated !== edCheckDigit) {
+      push(fieldError('RDFIIdentification', new ErrValidCheckDigit(calculated), this.checkDigit));
+    }
+
+    return enrichErrors(errors, this.lineNumber, iatEntryDetailFieldPositions);
   }
 
   private fieldInclusion(): Error | null {

@@ -1,4 +1,5 @@
 import { entryAddendaPos } from './constants.js';
+import { enrichErrors, addenda11FieldPositions } from './fieldPositions.js';
 import type { ValidateOpts } from './validateOpts.js';
 import { Converters } from './utils/converters.js';
 import { Validators } from './utils/validators.js';
@@ -60,6 +61,26 @@ export class Addenda11 {
       if (addrErr) return fieldError('OriginatorStreetAddress', addrErr, this.originatorStreetAddress);
     }
     return null;
+  }
+
+  /** ValidateAll performs all NACHA format rule checks and returns all errors found */
+  validateAll(): Error[] {
+    const errors: Error[] = [];
+    const push = (err: Error | null | undefined) => { if (err) errors.push(err); };
+
+    // Field inclusion checks (inlined to collect all)
+    if (this.typeCode === '') push(fieldError('TypeCode', ErrConstructor, this.typeCode));
+    if (this.originatorName === '') push(fieldError('OriginatorName', ErrConstructor, this.originatorName));
+    if (this.originatorStreetAddress === '') push(fieldError('OriginatorStreetAddress', ErrConstructor, this.originatorStreetAddress));
+    if (this.entryDetailSequenceNumber < 0) push(fieldError('EntryDetailSequenceNumber', ErrConstructor, this.entryDetailSequenceNumberField()));
+
+    if (this.typeCode !== '11') push(fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode));
+    if (!this.validateOpts?.allowSpecialCharacters) {
+      push(fieldError('OriginatorName', this.validators.isAlphanumeric(this.originatorName), this.originatorName));
+      push(fieldError('OriginatorStreetAddress', this.validators.isAlphanumeric(this.originatorStreetAddress), this.originatorStreetAddress));
+    }
+
+    return enrichErrors(errors, this.lineNumber, addenda11FieldPositions);
   }
 
   private fieldInclusion(): Error | null {

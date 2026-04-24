@@ -3,6 +3,8 @@ export * from './constants.js';
 export * from './errors/index.js';
 export * from './validateOpts.js';
 export * from './utils/index.js';
+export * from './fieldPositions.js';
+export { errorCodes } from './errorCodes.js';
 export { FileHeader, newFileHeader } from './fileHeader.js';
 export { FileControl, newFileControl } from './fileControl.js';
 export { BatchHeader, newBatchHeader } from './batchHeader.js';

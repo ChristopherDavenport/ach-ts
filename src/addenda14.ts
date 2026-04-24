@@ -1,4 +1,5 @@
 import { entryAddendaPos } from './constants.js';
+import { enrichErrors, addenda14FieldPositions } from './fieldPositions.js';
 import type { ValidateOpts } from './validateOpts.js';
 import { Converters } from './utils/converters.js';
 import { Validators } from './utils/validators.js';
@@ -74,6 +75,31 @@ export class Addenda14 {
       if (ccErr) return fieldError('RDFIBranchCountryCode', ccErr, this.rdfiBranchCountryCode);
     }
     return null;
+  }
+
+  /** ValidateAll performs all NACHA format rule checks and returns all errors found */
+  validateAll(): Error[] {
+    const errors: Error[] = [];
+    const push = (err: Error | null | undefined) => { if (err) errors.push(err); };
+
+    if (this.typeCode === '') push(fieldError('TypeCode', ErrConstructor, this.typeCode));
+    if (this.rdfiName === '') push(fieldError('RDFIName', ErrConstructor, this.rdfiName));
+    if (this.rdfiIDNumberQualifier === '') push(fieldError('RDFIIDNumberQualifier', ErrConstructor, this.rdfiIDNumberQualifier));
+    if (this.rdfiIdentification === '') push(fieldError('RDFIIdentification', ErrConstructor, this.rdfiIdentification));
+    if (this.rdfiBranchCountryCode === '') push(fieldError('RDFIBranchCountryCode', ErrConstructor, this.rdfiBranchCountryCode));
+    if (this.entryDetailSequenceNumber < 0) push(fieldError('EntryDetailSequenceNumber', ErrConstructor, this.entryDetailSequenceNumberField()));
+
+    if (this.typeCode !== '14') push(fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode));
+    if (this.validators.isIDNumberQualifier(this.rdfiIDNumberQualifier)) {
+      push(fieldError('RDFIIDNumberQualifier', ErrIDNumberQualifier, this.rdfiIDNumberQualifier));
+    }
+    if (!this.validateOpts?.allowSpecialCharacters) {
+      push(fieldError('RDFIName', this.validators.isAlphanumeric(this.rdfiName), this.rdfiName));
+      push(fieldError('RDFIIdentification', this.validators.isAlphanumeric(this.rdfiIdentification), this.rdfiIdentification));
+      push(fieldError('RDFIBranchCountryCode', this.validators.isAlphanumeric(this.rdfiBranchCountryCode), this.rdfiBranchCountryCode));
+    }
+
+    return enrichErrors(errors, this.lineNumber, addenda14FieldPositions);
   }
 
   private fieldInclusion(): Error | null {

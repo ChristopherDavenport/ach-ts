@@ -1,4 +1,5 @@
 import { fileControlPos } from './constants.js';
+import { enrichErrors, fileControlFieldPositions } from './fieldPositions.js';
 import { Converters } from './utils/converters.js';
 import { fieldError, ErrConstructor } from './errors/index.js';
 
@@ -86,6 +87,37 @@ export class FileControl {
     }
 
     return null;
+  }
+
+  /** ValidateAll performs all NACHA format rule checks and returns all errors found */
+  validateAll(): Error[] {
+    const errors: Error[] = [];
+    const push = (err: Error | null | undefined) => { if (err) errors.push(err); };
+
+    // Field inclusion checks (inlined to collect all)
+    if (this.blockCount === 0) push(fieldError('BlockCount', ErrConstructor, this.blockCountField()));
+    if (this.totalCreditEntryDollarAmountInFile !== 0 || this.totalDebitEntryDollarAmountInFile !== 0) {
+      if (this.batchCount === 0) push(fieldError('BatchCount', ErrConstructor, this.batchCountField()));
+      if (this.entryAddendaCount === 0) push(fieldError('EntryAddendaCount', ErrConstructor, this.entryAddendaCountField()));
+      if (this.entryHash === 0) push(fieldError('EntryHash', ErrConstructor, this.entryAddendaCountField()));
+    }
+
+    if (this.totalDebitEntryDollarAmountInFile > FileControl.NachaFileDebitCreditLimit) {
+      push(fieldError(
+        'TotalDebitEntryDollarAmount',
+        new Error(`does not match formatted value ${this.totalDebitEntryDollarAmountInFileField()}`),
+        this.totalDebitEntryDollarAmountInFile,
+      ));
+    }
+    if (this.totalCreditEntryDollarAmountInFile > FileControl.NachaFileDebitCreditLimit) {
+      push(fieldError(
+        'TotalCreditEntryDollarAmount',
+        new Error(`does not match formatted value ${this.totalCreditEntryDollarAmountInFileField()}`),
+        this.totalCreditEntryDollarAmountInFile,
+      ));
+    }
+
+    return enrichErrors(errors, this.lineNumber, fileControlFieldPositions);
   }
 
   private fieldInclusion(): Error | null {

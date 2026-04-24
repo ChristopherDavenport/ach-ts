@@ -1,4 +1,5 @@
 import { entryAddendaPos } from './constants.js';
+import { enrichErrors, addenda02FieldPositions } from './fieldPositions.js';
 import type { ValidateOpts } from './validateOpts.js';
 import { Converters } from './utils/converters.js';
 import { Validators } from './utils/validators.js';
@@ -122,6 +123,47 @@ export class Addenda02 {
     }
 
     return null;
+  }
+
+  /** ValidateAll performs all NACHA format rule checks and returns all errors found */
+  validateAll(): Error[] {
+    const errors: Error[] = [];
+    const push = (err: Error | null | undefined) => { if (err) errors.push(err); };
+
+    // Field inclusion checks (inlined to collect all)
+    if (this.typeCode === '') push(fieldError('TypeCode', ErrConstructor, this.typeCode));
+    if (this.transactionSerialNumber === '') push(fieldError('TransactionSerialNumber', ErrFieldRequired, this.transactionSerialNumber));
+    if (this.transactionDate === '') push(fieldError('TransactionDate', ErrFieldRequired, this.transactionDate));
+    if (this.terminalLocation === '') push(fieldError('TerminalLocation', ErrFieldRequired, this.terminalLocation));
+    if (this.terminalCity === '') push(fieldError('TerminalCity', ErrFieldRequired, this.terminalCity));
+    if (this.terminalState === '') push(fieldError('TerminalState', ErrFieldRequired, this.terminalState));
+
+    if (this.validators.isTypeCode(this.typeCode)) push(fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode));
+    if (this.typeCode !== '02') push(fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode));
+
+    if (!this.validateOpts?.allowSpecialCharacters) {
+      for (const [name, val] of [
+        ['ReferenceInformationOne', this.referenceInformationOne],
+        ['ReferenceInformationTwo', this.referenceInformationTwo],
+        ['TerminalIdentificationCode', this.terminalIdentificationCode],
+        ['TransactionSerialNumber', this.transactionSerialNumber],
+        ['AuthorizationCodeOrExpireDate', this.authorizationCodeOrExpireDate],
+        ['TerminalLocation', this.terminalLocation],
+        ['TerminalCity', this.terminalCity],
+        ['TerminalState', this.terminalState],
+      ] as const) {
+        push(fieldError(name, this.validators.isAlphanumeric(val), val));
+      }
+    }
+
+    // TransactionDate MMDD validation
+    const dateField = this.transactionDateField();
+    const mm = this.converters.parseStringField(dateField.substring(0, 2));
+    const dd = this.converters.parseStringField(dateField.substring(2, 4));
+    if (this.validators.isMonth(mm)) push(fieldError('TransactionDate', ErrValidMonth, mm));
+    if (this.validators.isDay(mm, dd)) push(fieldError('TransactionDate', ErrValidDay, mm));
+
+    return enrichErrors(errors, this.lineNumber, addenda02FieldPositions);
   }
 
   private fieldInclusion(): Error | null {

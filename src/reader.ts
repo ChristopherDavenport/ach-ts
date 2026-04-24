@@ -37,6 +37,7 @@ import { newAddenda99Contested, isContestedReturnCode } from './addenda99Contest
 import {
   ParseError,
   ACHError,
+  FieldError,
   ErrFileTooLong,
   ErrFileHeader,
   ErrFileControl,
@@ -53,6 +54,8 @@ import {
   RecordWrongLengthErr,
   fieldError,
 } from './errors/index.js';
+
+import { recordNameToFieldPositions } from './fieldPositions.js';
 
 // defaultMaxLines matches Go: 2 + 2_000_000 + 100_000_000 + 8
 const defaultMaxLines = 102_002_010;
@@ -121,7 +124,19 @@ export class Reader {
   private parseError(err: Error | null): Error | null {
     if (!err) return null;
     if (err instanceof ParseError) return err;
-    return new ParseError(this.lineNum, this.recordName, err);
+    const pe = new ParseError(this.lineNum, this.recordName, err);
+    // Enrich with column data from the wrapped FieldError's field position
+    if (err instanceof FieldError) {
+      const positions = recordNameToFieldPositions[this.recordName];
+      if (positions) {
+        const pos = positions[err.fieldName];
+        if (pos) {
+          pe.startColumn = pos.start;
+          pe.endColumn = pos.end;
+        }
+      }
+    }
+    return pe;
   }
 
   setValidation(opts: ValidateOpts): void {
@@ -145,7 +160,7 @@ export class Reader {
         if (currentLineRuneCount > 0) {
           this.lineNum++;
           if (this.lineNum > this.maxLines) {
-            this._errors.push(ErrFileTooLong);
+            this._errors.push(new ParseError(this.lineNum, '', ErrFileTooLong));
             return this.returnFile();
           }
           if (!blankLine(currentLine)) {
@@ -168,7 +183,7 @@ export class Reader {
       // We have a full line to parse
       this.lineNum++;
       if (this.lineNum > this.maxLines) {
-        this._errors.push(ErrFileTooLong);
+        this._errors.push(new ParseError(this.lineNum, '', ErrFileTooLong));
         return this.returnFile();
       }
       if (!blankLine(currentLine)) {
@@ -202,8 +217,7 @@ export class Reader {
     }
     if (this.isEmptyFileHeader()) {
       if (!this.file.validateOpts?.allowMissingFileHeader) {
-        this.recordName = 'FileHeader';
-        this._errors.push(ErrFileHeader);
+        this._errors.push(new ParseError(1, 'FileHeader', ErrFileHeader));
       }
     }
 
@@ -216,20 +230,32 @@ export class Reader {
     if (!this.file.isADV()) {
       if (!this.file.validateOpts?.allowMissingFileControl) {
         if (this.isEmptyFileControl()) {
-          this.recordName = 'FileControl';
-          this._errors.push(ErrFileControl);
+          this._errors.push(new ParseError(this.lineNum || 1, 'FileControl', ErrFileControl));
         }
       }
     } else {
       if (!this.file.validateOpts?.allowMissingFileControl) {
         if (this.isEmptyADVFileControl()) {
-          this.recordName = 'FileControl';
-          this._errors.push(ErrFileControl);
+          this._errors.push(new ParseError(this.lineNum || 1, 'FileControl', ErrFileControl));
         }
       }
     }
 
     return this.returnFile();
+  }
+
+  /**
+   * Read the ACH file, returning both the parsed file and any errors
+   * without throwing. Use this instead of read() when you want to
+   * inspect errors programmatically (e.g. for LSP diagnostics).
+   */
+  readWithErrors(): { file: File; errors: Error[] } {
+    try {
+      const file = this.read();
+      return { file, errors: [] };
+    } catch {
+      return { file: this.file, errors: [...this._errors] };
+    }
   }
 
   private returnFile(): File {

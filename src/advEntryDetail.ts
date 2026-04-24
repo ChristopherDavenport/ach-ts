@@ -1,4 +1,5 @@
 import { entryDetailPos, CategoryForward } from './constants.js';
+import { enrichErrors, advEntryDetailFieldPositions } from './fieldPositions.js';
 import type { ValidateOpts } from './validateOpts.js';
 import { Converters } from './utils/converters.js';
 import { Validators, CalculateCheckDigit } from './utils/validators.js';
@@ -126,6 +127,44 @@ export class ADVEntryDetail {
     }
 
     return null;
+  }
+
+  /** ValidateAll performs all NACHA format rule checks and returns all errors found */
+  validateAll(): Error[] {
+    const errors: Error[] = [];
+    const push = (err: Error | null | undefined) => { if (err) errors.push(err); };
+
+    // Field inclusion checks (inlined to collect all)
+    if (this.transactionCode === 0) push(fieldError('TransactionCode', ErrConstructor, String(this.transactionCode)));
+    if (this.rdfiIdentification === '') push(fieldError('RDFIIdentification', ErrConstructor, this.rdfiIdentificationField()));
+    if (this.dfiAccountNumber === '') push(fieldError('DFIAccountNumber', ErrConstructor, this.dfiAccountNumber));
+    if (this.adviceRoutingNumber === '') push(fieldError('AdviceRoutingNumber', ErrConstructor, this.adviceRoutingNumber));
+    if (this.individualName === '') push(fieldError('IndividualName', ErrFieldRequired, this.individualName));
+    if (this.achOperatorRoutingNumber === '') push(fieldError('ACHOperatorRoutingNumber', ErrConstructor, this.achOperatorRoutingNumber));
+    if (this.julianDay <= 0) push(fieldError('JulianDay', ErrConstructor, String(this.julianDay)));
+    if (this.sequenceNumber === 0) push(fieldError('SequenceNumber', ErrConstructor, String(this.sequenceNumber)));
+
+    if (this.validators.isTransactionCode(this.transactionCode)) {
+      push(fieldError('TransactionCode', new Error('invalid transaction code'), String(this.transactionCode)));
+    }
+    if (!this.validateOpts?.allowSpecialCharacters) {
+      for (const [name, val] of [
+        ['DFIAccountNumber', this.dfiAccountNumber],
+        ['AdviceRoutingNumber', this.adviceRoutingNumber],
+        ['IndividualName', this.individualName],
+        ['DiscretionaryData', this.discretionaryData],
+        ['ACHOperatorRoutingNumber', this.achOperatorRoutingNumber],
+      ] as const) {
+        push(fieldError(name, this.validators.isAlphanumeric(val), val));
+      }
+    }
+    const calculated = CalculateCheckDigit(this.rdfiIdentificationField());
+    const edCheckDigit = parseInt(this.checkDigit, 10) || 0;
+    if (calculated !== edCheckDigit) {
+      push(fieldError('RDFIIdentification', new ErrValidCheckDigit(calculated), this.checkDigit));
+    }
+
+    return enrichErrors(errors, this.lineNumber, advEntryDetailFieldPositions);
   }
 
   private fieldInclusion(): Error | null {

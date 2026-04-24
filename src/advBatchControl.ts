@@ -1,4 +1,5 @@
 import { batchControlPos, AutomatedAccountingAdvices } from './constants.js';
+import { enrichErrors, advBatchControlFieldPositions } from './fieldPositions.js';
 import type { ValidateOpts } from './validateOpts.js';
 import { Converters } from './utils/converters.js';
 import { Validators } from './utils/validators.js';
@@ -79,6 +80,26 @@ export class ADVBatchControl {
     }
 
     return null;
+  }
+
+  /** ValidateAll performs all NACHA format rule checks and returns all errors found */
+  validateAll(): Error[] {
+    const errors: Error[] = [];
+    const push = (err: Error | null | undefined) => { if (err) errors.push(err); };
+
+    if (this.serviceClassCode === 0) push(fieldError('ServiceClassCode', ErrConstructor, String(this.serviceClassCode)));
+    if (this.odfiIdentification === '000000000' || this.odfiIdentification === '') {
+      push(fieldError('ODFIIdentification', ErrConstructor, this.odfiIdentificationField()));
+    }
+
+    if (this.validators.isServiceClass(this.serviceClassCode)) {
+      push(fieldError('ServiceClassCode', new Error('invalid service class code'), String(this.serviceClassCode)));
+    }
+    if (!this.validateOpts?.allowSpecialCharacters) {
+      push(fieldError('ACHOperatorData', this.validators.isAlphanumeric(this.achOperatorData), this.achOperatorData));
+    }
+
+    return enrichErrors(errors, this.lineNumber, advBatchControlFieldPositions);
   }
 
   private fieldInclusion(): Error | null {

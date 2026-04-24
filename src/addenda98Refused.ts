@@ -1,4 +1,5 @@
 import { entryAddendaPos } from './constants.js';
+import { enrichErrors, addenda98RefusedFieldPositions } from './fieldPositions.js';
 import { Converters } from './utils/converters.js';
 import { lookupChangeCode, type ChangeCode } from './addenda98.js';
 import {
@@ -86,6 +87,21 @@ export class Addenda98Refused {
       return fieldError('TraceSequenceNumber', ErrAddenda98RefusedTraceSequenceNumber, this.traceSequenceNumber);
     }
     return null;
+  }
+
+  /** ValidateAll performs all NACHA format rule checks and returns all errors found */
+  validateAll(): Error[] {
+    const errors: Error[] = [];
+    const push = (err: Error | null | undefined) => { if (err) errors.push(err); };
+
+    if (this.typeCode === '') push(fieldError('TypeCode', ErrConstructor, this.typeCode));
+    if (this.typeCode !== '98') push(fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode));
+    if (!lookupChangeCode(this.refusedChangeCode)) push(fieldError('RefusedChangeCode', ErrAddenda98RefusedChangeCode, this.refusedChangeCode));
+    if (this.correctedData === '') push(fieldError('CorrectedData', ErrAddenda98CorrectedData, this.correctedData));
+    if (!lookupChangeCode(this.changeCode)) push(fieldError('ChangeCode', ErrAddenda98ChangeCode, this.changeCode));
+    if (this.traceSequenceNumber === '') push(fieldError('TraceSequenceNumber', ErrAddenda98RefusedTraceSequenceNumber, this.traceSequenceNumber));
+
+    return enrichErrors(errors, this.lineNumber, addenda98RefusedFieldPositions);
   }
 
   refusedChangeCodeField(): ChangeCode | null { return lookupChangeCode(this.refusedChangeCode); }

@@ -22,6 +22,22 @@ export class BatchRCK extends Batch {
     return null;
   }
 
+  validateAll(): Error[] {
+    if (this.validateOpts?.skipAll || this.validateOpts?.bypassBatchValidation) return [];
+    const errors = this.verifyAll();
+    if (this.header.standardEntryClassCode !== RCK) {
+      errors.push(this.batchError('StandardEntryClassCode', ErrBatchSECType, RCK));
+    }
+    if (this.header.serviceClassCode === CreditsOnly) {
+      errors.push(this.batchError('ServiceClassCode', ErrBatchServiceClassCode, this.header.serviceClassCode));
+    }
+    if (this.header.companyEntryDescription !== 'REDEPCHECK') {
+      errors.push(this.batchError('CompanyEntryDescription', ErrBatchCompanyEntryDescriptionREDEPCHECK, this.header.companyEntryDescription));
+    }
+    for (const inv of this.invalidEntries()) errors.push(inv.error);
+    return errors;
+  }
+
   invalidEntries(): InvalidEntry[] {
     const out: InvalidEntry[] = [];
     for (const entry of this.entries) {

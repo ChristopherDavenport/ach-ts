@@ -19,6 +19,19 @@ export class BatchENR extends Batch {
     return null;
   }
 
+  validateAll(): Error[] {
+    if (this.validateOpts?.skipAll || this.validateOpts?.bypassBatchValidation) return [];
+    const errors = this.verifyAll();
+    if (this.header.standardEntryClassCode !== ENR) {
+      errors.push(this.batchError('StandardEntryClassCode', ErrBatchSECType, ENR));
+    }
+    if (this.header.companyEntryDescription !== 'AUTOENROLL') {
+      errors.push(this.batchError('CompanyEntryDescription', ErrBatchCompanyEntryDescriptionAutoenroll, this.header.companyEntryDescription));
+    }
+    for (const inv of this.invalidEntries()) errors.push(inv.error);
+    return errors;
+  }
+
   invalidEntries(): InvalidEntry[] {
     const out: InvalidEntry[] = [];
     for (const entry of this.entries) {

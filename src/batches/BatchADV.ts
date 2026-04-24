@@ -28,6 +28,23 @@ export class BatchADV extends Batch {
     return null;
   }
 
+  validateAll(): Error[] {
+    if (this.validateOpts?.skipAll || this.validateOpts?.bypassBatchValidation) return [];
+    const errors: Error[] = [];
+    if (this.header.standardEntryClassCode !== ADV) {
+      errors.push(this.batchError('StandardEntryClassCode', ErrBatchSECType, ADV));
+    }
+    if (this.header.serviceClassCode !== AutomatedAccountingAdvices) {
+      errors.push(this.batchError('ServiceClassCode', ErrBatchServiceClassCode, this.header.serviceClassCode));
+    }
+    if (this.header.originatorStatusCode !== 0) {
+      errors.push(this.batchError('OriginatorStatusCode', ErrOrigStatusCode, this.header.originatorStatusCode));
+    }
+    errors.push(...this.verifyAll());
+    for (const inv of this.invalidEntries()) errors.push(inv.error);
+    return errors;
+  }
+
   invalidEntries(): InvalidEntry[] {
     const out: InvalidEntry[] = [];
     for (const entry of this.advEntries) {

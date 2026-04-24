@@ -1,0 +1,144 @@
+import { batchControlPos } from './constants.js';
+import type { ValidateOpts } from './validateOpts.js';
+import { Converters } from './utils/converters.js';
+import { Validators } from './utils/validators.js';
+import { fieldError, ErrConstructor, ErrServiceClass } from './errors/index.js';
+
+/**
+ * BatchControl contains entry counts, dollar totals and hash
+ * totals accumulated from each entry detail record in the batch.
+ */
+export class BatchControl {
+  id = '';
+  /** ServiceClassCode same as BatchHeader */
+  serviceClassCode = 0;
+  /** EntryAddendaCount tally of each Entry Detail and Addenda */
+  entryAddendaCount = 0;
+  /** EntryHash sum of RDFIs receiving entries routing numbers (truncated to 10 digits) */
+  entryHash = 0;
+  /** TotalDebitEntryDollarAmount dollar totals of debit entries in the batch */
+  totalDebitEntryDollarAmount = 0;
+  /** TotalCreditEntryDollarAmount dollar totals of credit entries in the batch */
+  totalCreditEntryDollarAmount = 0;
+  /** CompanyIdentification alphanumeric code used to identify an Originator */
+  companyIdentification = '';
+  /** MessageAuthenticationCode the MAC is an eight character code derived from a special key */
+  messageAuthenticationCode = '';
+  /** Reserved for future use */
+  reserved = '';
+  /** ODFIIdentification the routing number is used to identify the DFI */
+  odfiIdentification = '';
+  /** BatchNumber assigned in ascending order to each batch */
+  batchNumber = 0;
+  /** Line number at which the record appears */
+  lineNumber = 0;
+
+  private converters = new Converters();
+  private validators = new Validators();
+  validateOpts?: ValidateOpts;
+
+  static readonly NachaBatchDebitCreditLimit = 999_999_999_999;
+
+  /** Parse takes the input record string and parses the BatchControl values */
+  parse(record: string): void {
+    const runes = [...record];
+    if (runes.length !== 94) return;
+
+    // 1-1 Always "8"
+    // 2-4 ServiceClassCode
+    this.serviceClassCode = this.converters.parseNumField(runes.slice(1, 4).join(''));
+    // 5-10 EntryAddendaCount
+    this.entryAddendaCount = this.converters.parseNumField(runes.slice(4, 10).join(''));
+    // 11-20 EntryHash
+    this.entryHash = this.converters.parseNumField(runes.slice(10, 20).join(''));
+    // 21-32 TotalDebitEntryDollarAmount
+    this.totalDebitEntryDollarAmount = this.converters.parseNumField(runes.slice(20, 32).join(''));
+    // 33-44 TotalCreditEntryDollarAmount
+    this.totalCreditEntryDollarAmount = this.converters.parseNumField(runes.slice(32, 44).join(''));
+    // 45-54 CompanyIdentification
+    this.companyIdentification = this.converters.parseStringFieldWithOpts(runes.slice(44, 54).join(''), this.validateOpts);
+    // 55-73 MessageAuthenticationCode
+    this.messageAuthenticationCode = this.converters.parseStringField(runes.slice(54, 73).join(''));
+    // 74-79 Reserved
+    this.reserved = runes.slice(73, 79).join('');
+    // 80-87 ODFIIdentification
+    this.odfiIdentification = this.converters.parseStringField(runes.slice(79, 87).join(''));
+    // 88-94 BatchNumber
+    this.batchNumber = this.converters.parseNumField(runes.slice(87, 94).join(''));
+  }
+
+  /** String writes the BatchControl struct to a 94 character string */
+  string(): string {
+    return (
+      batchControlPos +
+      this.serviceClassCodeField() +
+      this.entryAddendaCountField() +
+      this.entryHashField() +
+      this.totalDebitEntryDollarAmountField() +
+      this.totalCreditEntryDollarAmountField() +
+      this.companyIdentificationField() +
+      this.messageAuthenticationCodeField() +
+      '      ' + // 6 spaces reserved
+      this.odfiIdentificationField() +
+      this.batchNumberField()
+    );
+  }
+
+  setValidation(opts: ValidateOpts | undefined): void {
+    this.validateOpts = opts;
+  }
+
+  /** Validate performs NACHA format rule checks */
+  validate(): Error | null {
+    const inclErr = this.fieldInclusion();
+    if (inclErr) return inclErr;
+
+    if (this.validators.isServiceClass(this.serviceClassCode)) {
+      return fieldError('ServiceClassCode', ErrServiceClass, this.serviceClassCode);
+    }
+    if (!this.validateOpts?.allowSpecialCharacters) {
+      const err = this.validators.isAlphanumeric(this.companyIdentification);
+      if (err) return fieldError('CompanyIdentification', err, this.companyIdentification);
+    }
+    if (this.totalDebitEntryDollarAmount > BatchControl.NachaBatchDebitCreditLimit) {
+      return fieldError(
+        'TotalDebitEntryDollarAmount',
+        new Error(`does not match formatted value ${this.totalDebitEntryDollarAmountField()}`),
+        this.totalDebitEntryDollarAmount,
+      );
+    }
+    if (this.totalCreditEntryDollarAmount > BatchControl.NachaBatchDebitCreditLimit) {
+      return fieldError(
+        'TotalCreditEntryDollarAmount',
+        new Error(`does not match formatted value ${this.totalCreditEntryDollarAmountField()}`),
+        this.totalCreditEntryDollarAmount,
+      );
+    }
+    return null;
+  }
+
+  private fieldInclusion(): Error | null {
+    if (this.serviceClassCode === 0) {
+      return fieldError('ServiceClassCode', ErrConstructor, this.serviceClassCodeField());
+    }
+    if (this.odfiIdentification === '') {
+      return fieldError('ODFIIdentification', ErrConstructor, this.odfiIdentificationField());
+    }
+    return null;
+  }
+
+  // Field formatters
+  serviceClassCodeField(): string { return this.converters.numericField(this.serviceClassCode, 3); }
+  entryAddendaCountField(): string { return this.converters.numericField(this.entryAddendaCount, 6); }
+  entryHashField(): string { return this.converters.numericField(this.entryHash, 10); }
+  totalDebitEntryDollarAmountField(): string { return this.converters.numericField(this.totalDebitEntryDollarAmount, 12); }
+  totalCreditEntryDollarAmountField(): string { return this.converters.numericField(this.totalCreditEntryDollarAmount, 12); }
+  companyIdentificationField(): string { return this.converters.alphaField(this.companyIdentification, 10); }
+  messageAuthenticationCodeField(): string { return this.converters.alphaField(this.messageAuthenticationCode, 19); }
+  odfiIdentificationField(): string { return this.converters.stringField(this.odfiIdentification, 8); }
+  batchNumberField(): string { return this.converters.numericField(this.batchNumber, 7); }
+}
+
+export function newBatchControl(): BatchControl {
+  return new BatchControl();
+}

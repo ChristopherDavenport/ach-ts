@@ -1,8 +1,8 @@
 import { batchControlPos, AutomatedAccountingAdvices } from './constants.js';
-import { enrichErrors, advBatchControlFieldPositions } from './fieldPositions.js';
+import { enrichErrors, enrichError, advBatchControlFieldPositions } from './fieldPositions.js';
 import type { ValidateOpts } from './validateOpts.js';
-import { Converters } from './utils/converters.js';
-import { Validators } from './utils/validators.js';
+import { Converters, converters } from './utils/converters.js';
+import { Validators, validators } from './utils/validators.js';
 import { fieldError, ErrConstructor } from './errors/index.js';
 
 /**
@@ -20,9 +20,6 @@ export class ADVBatchControl {
   odfiIdentification = '';
   batchNumber = 1;
   lineNumber = 0;
-
-  private converters = new Converters();
-  private validators = new Validators();
   validateOpts?: ValidateOpts;
 
   parse(record: string): void {
@@ -31,21 +28,21 @@ export class ADVBatchControl {
 
     // 1-1 Always "8"
     // 2-4 ServiceClassCode
-    this.serviceClassCode = this.converters.parseNumField(runes.slice(1, 4).join(''));
+    this.serviceClassCode = converters.parseNumField(runes.slice(1, 4).join(''));
     // 5-10 EntryAddendaCount
-    this.entryAddendaCount = this.converters.parseNumField(runes.slice(4, 10).join(''));
+    this.entryAddendaCount = converters.parseNumField(runes.slice(4, 10).join(''));
     // 11-20 EntryHash
-    this.entryHash = this.converters.parseNumField(runes.slice(10, 20).join(''));
+    this.entryHash = converters.parseNumField(runes.slice(10, 20).join(''));
     // 21-40 TotalDebitEntryDollarAmount
-    this.totalDebitEntryDollarAmount = this.converters.parseNumField(runes.slice(20, 40).join(''));
+    this.totalDebitEntryDollarAmount = converters.parseNumField(runes.slice(20, 40).join(''));
     // 41-60 TotalCreditEntryDollarAmount
-    this.totalCreditEntryDollarAmount = this.converters.parseNumField(runes.slice(40, 60).join(''));
+    this.totalCreditEntryDollarAmount = converters.parseNumField(runes.slice(40, 60).join(''));
     // 61-79 ACHOperatorData
     this.achOperatorData = runes.slice(60, 79).join('').trim();
     // 80-87 ODFIIdentification
-    this.odfiIdentification = this.converters.parseStringField(runes.slice(79, 87).join(''));
+    this.odfiIdentification = converters.parseStringField(runes.slice(79, 87).join(''));
     // 88-94 BatchNumber
-    this.batchNumber = this.converters.parseNumField(runes.slice(87, 94).join(''));
+    this.batchNumber = converters.parseNumField(runes.slice(87, 94).join(''));
   }
 
   setValidation(opts: ValidateOpts | undefined): void {
@@ -67,15 +64,21 @@ export class ADVBatchControl {
   }
 
   validate(): Error | null {
+    const err = this._validate();
+    if (err) enrichError(err, this.lineNumber, advBatchControlFieldPositions);
+    return err;
+  }
+
+  private _validate(): Error | null {
     const inclErr = this.fieldInclusion();
     if (inclErr) return inclErr;
 
-    if (this.validators.isServiceClass(this.serviceClassCode)) {
+    if (validators.isServiceClass(this.serviceClassCode)) {
       return fieldError('ServiceClassCode', new Error('invalid service class code'), String(this.serviceClassCode));
     }
 
     if (!this.validateOpts?.allowSpecialCharacters) {
-      const err = this.validators.isAlphanumeric(this.achOperatorData);
+      const err = validators.isAlphanumeric(this.achOperatorData);
       if (err) return fieldError('ACHOperatorData', err, this.achOperatorData);
     }
 
@@ -92,11 +95,11 @@ export class ADVBatchControl {
       push(fieldError('ODFIIdentification', ErrConstructor, this.odfiIdentificationField()));
     }
 
-    if (this.validators.isServiceClass(this.serviceClassCode)) {
+    if (validators.isServiceClass(this.serviceClassCode)) {
       push(fieldError('ServiceClassCode', new Error('invalid service class code'), String(this.serviceClassCode)));
     }
     if (!this.validateOpts?.allowSpecialCharacters) {
-      push(fieldError('ACHOperatorData', this.validators.isAlphanumeric(this.achOperatorData), this.achOperatorData));
+      push(fieldError('ACHOperatorData', validators.isAlphanumeric(this.achOperatorData), this.achOperatorData));
     }
 
     return enrichErrors(errors, this.lineNumber, advBatchControlFieldPositions);
@@ -112,13 +115,13 @@ export class ADVBatchControl {
     return null;
   }
 
-  entryAddendaCountField(): string { return this.converters.numericField(this.entryAddendaCount, 6); }
-  entryHashField(): string { return this.converters.numericField(this.entryHash, 10); }
-  totalDebitEntryDollarAmountField(): string { return this.converters.numericField(this.totalDebitEntryDollarAmount, 20); }
-  totalCreditEntryDollarAmountField(): string { return this.converters.numericField(this.totalCreditEntryDollarAmount, 20); }
-  achOperatorDataField(): string { return this.converters.alphaField(this.achOperatorData, 19); }
-  odfiIdentificationField(): string { return this.converters.stringField(this.odfiIdentification, 8); }
-  batchNumberField(): string { return this.converters.numericField(this.batchNumber, 7); }
+  entryAddendaCountField(): string { return converters.numericField(this.entryAddendaCount, 6); }
+  entryHashField(): string { return converters.numericField(this.entryHash, 10); }
+  totalDebitEntryDollarAmountField(): string { return converters.numericField(this.totalDebitEntryDollarAmount, 20); }
+  totalCreditEntryDollarAmountField(): string { return converters.numericField(this.totalCreditEntryDollarAmount, 20); }
+  achOperatorDataField(): string { return converters.alphaField(this.achOperatorData, 19); }
+  odfiIdentificationField(): string { return converters.stringField(this.odfiIdentification, 8); }
+  batchNumberField(): string { return converters.numericField(this.batchNumber, 7); }
 }
 
 export function newADVBatchControl(): ADVBatchControl {

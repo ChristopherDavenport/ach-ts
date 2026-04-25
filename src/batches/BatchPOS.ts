@@ -3,6 +3,7 @@ import type { InvalidEntry } from '../batch.js';
 import { POS, CategoryForward } from '../constants.js';
 import { ErrBatchSECType, ErrBatchInvalidCardTransactionType, ErrValidState } from '../errors/index.js';
 import { usStateValid } from '../utils/validators.js';
+import { validators } from '../utils/validators.js';
 
 export class BatchPOS extends Batch {
   validate(): Error | null {
@@ -30,7 +31,7 @@ export class BatchPOS extends Batch {
   invalidEntries(): InvalidEntry[] {
     const out: InvalidEntry[] = [];
     for (const entry of this.entries) {
-      if (this.validators.isCardTransactionType(entry.discretionaryData)) {
+      if (validators.isCardTransactionType(entry.discretionaryData)) {
         out.push({ entry, error: this.batchError('CardTransactionType', ErrBatchInvalidCardTransactionType, entry.discretionaryData) });
       }
       let err = this.validAmountForCodes(entry);
@@ -53,6 +54,12 @@ export class BatchPOS extends Batch {
     if (err) return err;
     return this.validate();
   }
+
+  static from(b: Batch): BatchPOS {
+    const inst = new BatchPOS();
+    Batch.copyFrom(b, inst);
+    return inst;
+  }
 }
 
-registerBatchType(POS, (b: Batch) => Object.setPrototypeOf(b, BatchPOS.prototype) as BatchPOS);
+registerBatchType(POS, (b: Batch) => BatchPOS.from(b));

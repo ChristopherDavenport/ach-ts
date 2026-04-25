@@ -59,6 +59,12 @@ export class BatchARC extends Batch {
     if (err) return err;
     return this.validate();
   }
+
+  static from(b: Batch): BatchARC {
+    const inst = new BatchARC();
+    Batch.copyFrom(b, inst);
+    return inst;
+  }
 }
 
-registerBatchType(ARC, (b: Batch) => Object.setPrototypeOf(b, BatchARC.prototype) as BatchARC);
+registerBatchType(ARC, (b: Batch) => BatchARC.from(b));

@@ -25,8 +25,8 @@ import { BatchControl, newBatchControl } from './batchControl.js';
 import { EntryDetail } from './entryDetail.js';
 import { ADVEntryDetail } from './advEntryDetail.js';
 import { ADVBatchControl, newADVBatchControl } from './advBatchControl.js';
-import { Converters } from './utils/converters.js';
-import { Validators, CheckRoutingNumber, CalculateCheckDigit } from './utils/validators.js';
+import { Converters, converters } from './utils/converters.js';
+import { Validators, validators, CheckRoutingNumber, CalculateCheckDigit } from './utils/validators.js';
 import {
   fieldError,
   FieldError,
@@ -116,15 +116,25 @@ export class Batch implements Batcher {
   advControl: ADVBatchControl;
   private offset?: Offset;
   private _category = '';
-
-  protected converters = new Converters();
-  protected validators = new Validators();
   validateOpts?: ValidateOpts;
 
   constructor(bh?: BatchHeader) {
     this.header = bh ?? newBatchHeader();
     this.control = newBatchControl();
     this.advControl = newADVBatchControl();
+  }
+
+  /** Copy all fields from a source Batch into a target Batch (used by subclass factories). */
+  static copyFrom(src: Batch, target: Batch): void {
+    target.header = src.header;
+    target.entries = src.entries;
+    target.control = src.control;
+    target.advEntries = src.advEntries;
+    target.advControl = src.advControl;
+    target.offset = src.offset;
+    target._category = src._category;
+    target._id = src._id;
+    target.validateOpts = src.validateOpts;
   }
 
   // --- Batcher interface ---
@@ -301,7 +311,7 @@ export class Batch implements Batcher {
         let addendaSeq = 1;
         for (const a of entry.addenda05) {
           a.sequenceNumber = addendaSeq;
-          a.entryDetailSequenceNumber = this.converters.parseNumField(
+          a.entryDetailSequenceNumber = converters.parseNumField(
             this.entries[i].traceNumberField().substring(8),
           );
           addendaSeq++;
@@ -351,6 +361,12 @@ export class Batch implements Batcher {
 
   /** verify checks basic valid NACHA batch rules. */
   protected verify(): Error | null {
+    const err = this._verify();
+    if (err) this.enrichBatchError(err);
+    return err;
+  }
+
+  private _verify(): Error | null {
     // No entries in batch
     if (this.entries.length === 0 && this.advEntries.length === 0) {
       return this.batchError('entries', ErrBatchNoEntries);
@@ -421,6 +437,34 @@ export class Batch implements Batcher {
     return null;
   }
 
+  /** Enrich a single BatchError with positional data (line, columns, relatedLocations). */
+  protected enrichBatchError(err: Error): void {
+    if (err instanceof BatchError && err.line === undefined) {
+      const controlLine = this.isADV() ? this.advControl.lineNumber : this.control.lineNumber;
+      err.line = controlLine;
+      const positions = this.isADV() ? advBatchControlFieldPositions : batchControlFieldPositions;
+      const pos = positions[err.fieldName];
+      if (pos) {
+        err.startColumn = pos.start;
+        err.endColumn = pos.end;
+      } else {
+        err.startColumn = 0;
+        err.endColumn = 94;
+      }
+      if (err.cause instanceof ErrBatchHeaderControlEquality) {
+        const headerPos = batchHeaderFieldPositions[err.fieldName];
+        if (headerPos && this.header.lineNumber) {
+          err.relatedLocations = [{
+            line: this.header.lineNumber,
+            startColumn: headerPos.start,
+            endColumn: headerPos.end,
+            message: `header value: ${err.cause.headerValue}`,
+          }];
+        }
+      }
+    }
+  }
+
   /** verifyAll checks basic valid NACHA batch rules, collecting all errors. */
   protected verifyAll(): Error[] {
     const errors: Error[] = [];
@@ -486,33 +530,7 @@ export class Batch implements Batcher {
 
     // Enrich BatchError instances with positional data
     for (const err of errors) {
-      if (err instanceof BatchError && err.line === undefined) {
-        const controlLine = this.isADV() ? this.advControl.lineNumber : this.control.lineNumber;
-        err.line = controlLine;
-        const positions = this.isADV() ? advBatchControlFieldPositions : batchControlFieldPositions;
-        const pos = positions[err.fieldName];
-        if (pos) {
-          err.startColumn = pos.start;
-          err.endColumn = pos.end;
-        } else {
-          // Full-line fallback for structural errors without a specific field
-          err.startColumn = 0;
-          err.endColumn = 94;
-        }
-
-        // Add relatedLocation pointing to the header for header/control equality errors
-        if (err.cause instanceof ErrBatchHeaderControlEquality) {
-          const headerPos = batchHeaderFieldPositions[err.fieldName];
-          if (headerPos && this.header.lineNumber) {
-            err.relatedLocations = [{
-              line: this.header.lineNumber,
-              startColumn: headerPos.start,
-              endColumn: headerPos.end,
-              message: `header value: ${err.cause.headerValue}`,
-            }];
-          }
-        }
-      }
+      this.enrichBatchError(err);
     }
 
     return errors;
@@ -531,7 +549,7 @@ export class Batch implements Batcher {
         hash += parseInt(aba8(entry.rdfiIdentification), 10) || 0;
       }
     }
-    return this.converters.leastSignificantDigits(hash, 10);
+    return converters.leastSignificantDigits(hash, 10);
   }
 
   protected calculateBatchAmounts(): [number, number] {
@@ -695,7 +713,7 @@ export class Batch implements Batcher {
           }
           lastSeq = a.sequenceNumber;
           // check we are in the correct Entry Detail
-          const edSeq = this.converters.numericField(a.entryDetailSequenceNumber, 7);
+          const edSeq = converters.numericField(a.entryDetailSequenceNumber, 7);
           const traceSeq = entry.traceNumberField().substring(8);
           if (edSeq !== traceSeq) {
             return this.batchError('TraceNumber', new ErrBatchAscending(lastSeq, a.sequenceNumber));
@@ -757,7 +775,7 @@ export class Batch implements Batcher {
           case ARC: case BOC: case CIE: case DNE: case ENR: case MTE:
           case POP: case POS: case PPD: case RCK: case SHR: case TEL: case WEB:
             if (!this.validateOpts?.allowEmptyIndividualName) {
-              const nameErr = this.validators.isNonZero(entry.individualName);
+              const nameErr = validators.isNonZero(entry.individualName);
               if (nameErr) return fieldError('IndividualName', nameErr, entry.individualName);
             }
             break;
@@ -818,7 +836,7 @@ export class Batch implements Batcher {
           case ARC: case BOC: case CIE: case DNE: case ENR: case MTE:
           case POP: case POS: case PPD: case RCK: case SHR: case TEL: case WEB:
             if (!this.validateOpts?.allowEmptyIndividualName) {
-              const nameErr = fieldError('IndividualName', this.validators.isNonZero(entry.individualName), entry.individualName);
+              const nameErr = fieldError('IndividualName', validators.isNonZero(entry.individualName), entry.individualName);
               if (nameErr) {
                 nameErr.line = entry.lineNumber;
                 const pos = entryDetailFieldPositions['IndividualName'];
@@ -963,7 +981,7 @@ export class Batch implements Batcher {
       return null;
     }
 
-    const isPrenoteTxCode = this.validators.isPrenote(entry.transactionCode);
+    const isPrenoteTxCode = validators.isPrenote(entry.transactionCode);
     if (isPrenoteTxCode) {
       if (entry.amount === 0) return null;
       return fieldError('Amount', ErrBatchAmountNonZero, entry.amount);

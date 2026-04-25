@@ -1,2 +1,2 @@
-export { Converters } from './converters.js';
-export { Validators, CalculateCheckDigit, CheckRoutingNumber, standardTransactionCode, readRunes } from './validators.js';
+export { Converters, converters } from './converters.js';
+export { Validators, CalculateCheckDigit, CheckRoutingNumber, standardTransactionCode, readRunes, validators } from './validators.js';

@@ -59,6 +59,12 @@ export class BatchTRC extends Batch {
     if (err) return err;
     return this.validate();
   }
+
+  static from(b: Batch): BatchTRC {
+    const inst = new BatchTRC();
+    Batch.copyFrom(b, inst);
+    return inst;
+  }
 }
 
-registerBatchType(TRC, (b: Batch) => Object.setPrototypeOf(b, BatchTRC.prototype) as BatchTRC);
+registerBatchType(TRC, (b: Batch) => BatchTRC.from(b));

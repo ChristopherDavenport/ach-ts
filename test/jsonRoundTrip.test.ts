@@ -33,6 +33,8 @@ const validJSONFiles = [
   'iso8601.json',
   'dishonored-with-addenda05.json',
   'dishonored-with-addenda05-2.json',
+  'adv-valid.json',
+  'adv-return.json',
 ];
 
 // =========================================================================
@@ -76,6 +78,16 @@ describe('JSON round-trip: parse → serialize → re-parse', () => {
         expect(entries2[j].rdfiIdentification).toBe(entries1[j].rdfiIdentification);
         expect(entries2[j].amount).toBe(entries1[j].amount);
         expect(entries2[j].dfiAccountNumber).toBe(entries1[j].dfiAccountNumber);
+      }
+
+      // ADV entries
+      const advEntries1 = file1.batches[i].getADVEntries();
+      const advEntries2 = file2.batches[i].getADVEntries();
+      expect(advEntries2.length).toBe(advEntries1.length);
+      for (let j = 0; j < advEntries1.length; j++) {
+        expect(advEntries2[j].transactionCode).toBe(advEntries1[j].transactionCode);
+        expect(advEntries2[j].rdfiIdentification).toBe(advEntries1[j].rdfiIdentification);
+        expect(advEntries2[j].amount).toBe(advEntries1[j].amount);
       }
     }
 
@@ -162,5 +174,116 @@ describe('invalid JSON handling', () => {
     } else {
       expect(err).toBeInstanceOf(Error);
     }
+  });
+});
+
+// =========================================================================
+// toJSON() output uses Go-compatible key names
+// =========================================================================
+describe('toJSON() emits Go-compatible key names', () => {
+  it('PPD: batch keys match Go conventions', () => {
+    const jsonStr = readFixture('ppd-valid.json');
+    const file = mustParseJSON(jsonStr);
+    const json = file.toJSON() as Record<string, unknown>;
+
+    // Top-level keys
+    expect(json).toHaveProperty('fileHeader');
+    expect(json).toHaveProperty('batches');
+    expect(json).toHaveProperty('fileControl');
+    expect(json).toHaveProperty('IATBatches');
+
+    // Batch collection uses Go key "entryDetails" not "entries"
+    const batches = json.batches as Array<Record<string, unknown>>;
+    expect(batches.length).toBeGreaterThan(0);
+    expect(batches[0]).toHaveProperty('entryDetails');
+    expect(batches[0]).not.toHaveProperty('entries');
+    expect(batches[0]).toHaveProperty('batchHeader');
+    expect(batches[0]).toHaveProperty('batchControl');
+
+    // Entry uses Go casing: RDFIIdentification, DFIAccountNumber
+    const entries = batches[0].entryDetails as Array<Record<string, unknown>>;
+    expect(entries.length).toBeGreaterThan(0);
+    expect(entries[0]).toHaveProperty('RDFIIdentification');
+    expect(entries[0]).not.toHaveProperty('rdfiIdentification');
+    expect(entries[0]).toHaveProperty('DFIAccountNumber');
+    expect(entries[0]).not.toHaveProperty('dfiAccountNumber');
+
+    // BatchHeader uses Go casing: ODFIIdentification
+    const bh = batches[0].batchHeader as Record<string, unknown>;
+    expect(bh).toHaveProperty('ODFIIdentification');
+    expect(bh).not.toHaveProperty('odfiIdentification');
+
+    // BatchControl uses Go key names: totalDebit, totalCredit, ODFIIdentification
+    const bc = batches[0].batchControl as Record<string, unknown>;
+    expect(bc).toHaveProperty('totalDebit');
+    expect(bc).not.toHaveProperty('totalDebitEntryDollarAmount');
+    expect(bc).toHaveProperty('totalCredit');
+    expect(bc).not.toHaveProperty('totalCreditEntryDollarAmount');
+    expect(bc).toHaveProperty('ODFIIdentification');
+    expect(bc).toHaveProperty('messageAuthentication');
+    expect(bc).not.toHaveProperty('messageAuthenticationCode');
+
+    // FileControl uses Go key names: totalDebit, totalCredit
+    const fc = json.fileControl as Record<string, unknown>;
+    expect(fc).toHaveProperty('totalDebit');
+    expect(fc).not.toHaveProperty('totalDebitEntryDollarAmountInFile');
+    expect(fc).toHaveProperty('totalCredit');
+    expect(fc).not.toHaveProperty('totalCreditEntryDollarAmountInFile');
+  });
+
+  it('IAT: IATEntryDetails key and IAT-specific field casing', () => {
+    const jsonStr = readFixture('iat-debit.json');
+    const file = mustParseJSON(jsonStr);
+    const json = file.toJSON() as Record<string, unknown>;
+
+    const iatBatches = json.IATBatches as Array<Record<string, unknown>>;
+    expect(iatBatches.length).toBeGreaterThan(0);
+
+    // IAT uses "IATEntryDetails" not "IATEntries"
+    expect(iatBatches[0]).toHaveProperty('IATEntryDetails');
+    expect(iatBatches[0]).not.toHaveProperty('IATEntries');
+    expect(iatBatches[0]).toHaveProperty('IATBatchHeader');
+
+    // IATBatchHeader uses Go casing
+    const iatBH = iatBatches[0].IATBatchHeader as Record<string, unknown>;
+    expect(iatBH).toHaveProperty('ODFIIdentification');
+    expect(iatBH).toHaveProperty('ISODestinationCountryCode');
+    expect(iatBH).toHaveProperty('ISOOriginatingCurrencyCode');
+    expect(iatBH).toHaveProperty('ISODestinationCurrencyCode');
+    expect(iatBH).toHaveProperty('IATIndicator');
+
+    // IATEntryDetail uses Go casing
+    const iatEntries = iatBatches[0].IATEntryDetails as Array<Record<string, unknown>>;
+    expect(iatEntries.length).toBeGreaterThan(0);
+    expect(iatEntries[0]).toHaveProperty('RDFIIdentification');
+    expect(iatEntries[0]).toHaveProperty('DFIAccountNumber');
+  });
+
+  it('ADV: advEntryDetails and advBatchControl keys present', () => {
+    const jsonStr = readFixture('adv-valid.json');
+    const file = mustParseJSON(jsonStr);
+    const json = file.toJSON() as Record<string, unknown>;
+
+    const batches = json.batches as Array<Record<string, unknown>>;
+    expect(batches.length).toBeGreaterThan(0);
+
+    // ADV batches have advEntryDetails
+    expect(batches[0]).toHaveProperty('advEntryDetails');
+    const advEntries = batches[0].advEntryDetails as Array<Record<string, unknown>>;
+    expect(advEntries.length).toBeGreaterThan(0);
+    expect(advEntries[0]).toHaveProperty('RDFIIdentification');
+    expect(advEntries[0]).toHaveProperty('DFIAccountNumber');
+
+    // ADV batches have advBatchControl
+    expect(batches[0]).toHaveProperty('advBatchControl');
+    const abc = batches[0].advBatchControl as Record<string, unknown>;
+    expect(abc).toHaveProperty('ODFIIdentification');
+    expect(abc).toHaveProperty('totalDebit');
+    expect(abc).toHaveProperty('totalCredit');
+
+    // fileADVControl uses Go key names
+    const advFC = json.fileADVControl as Record<string, unknown>;
+    expect(advFC).toHaveProperty('totalDebit');
+    expect(advFC).not.toHaveProperty('totalDebitEntryDollarAmountInFile');
   });
 });

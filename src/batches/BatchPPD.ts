@@ -47,6 +47,12 @@ export class BatchPPD extends Batch {
     if (err) return err;
     return this.validate();
   }
+
+  static from(b: Batch): BatchPPD {
+    const inst = new BatchPPD();
+    Batch.copyFrom(b, inst);
+    return inst;
+  }
 }
 
-registerBatchType(PPD, (b: Batch) => Object.setPrototypeOf(b, BatchPPD.prototype) as BatchPPD);
+registerBatchType(PPD, (b: Batch) => BatchPPD.from(b));

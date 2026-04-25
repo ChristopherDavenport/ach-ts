@@ -1,8 +1,8 @@
 import { batchHeaderPos } from './constants.js';
-import { enrichErrors, batchHeaderFieldPositions } from './fieldPositions.js';
+import { enrichErrors, enrichError, batchHeaderFieldPositions } from './fieldPositions.js';
 import type { ValidateOpts } from './validateOpts.js';
-import { Converters } from './utils/converters.js';
-import { Validators } from './utils/validators.js';
+import { Converters, converters } from './utils/converters.js';
+import { Validators, validators } from './utils/validators.js';
 import {
   fieldError,
   ErrConstructor,
@@ -43,9 +43,6 @@ export class BatchHeader {
   batchNumber = 0;
   /** Line number at which the record appears */
   lineNumber = 0;
-
-  private converters = new Converters();
-  private validators = new Validators();
   validateOpts?: ValidateOpts;
 
   /** Parse takes the input record string and parses the BatchHeader values */
@@ -55,29 +52,29 @@ export class BatchHeader {
 
     // 1-1 Always "5"
     // 2-4 ServiceClassCode
-    this.serviceClassCode = this.converters.parseNumField(runes.slice(1, 4).join(''));
+    this.serviceClassCode = converters.parseNumField(runes.slice(1, 4).join(''));
     // 5-20 CompanyName
-    this.companyName = this.converters.parseStringFieldWithOpts(runes.slice(4, 20).join(''), this.validateOpts);
+    this.companyName = converters.parseStringFieldWithOpts(runes.slice(4, 20).join(''), this.validateOpts);
     // 21-40 CompanyDiscretionaryData
-    this.companyDiscretionaryData = this.converters.parseStringFieldWithOpts(runes.slice(20, 40).join(''), this.validateOpts);
+    this.companyDiscretionaryData = converters.parseStringFieldWithOpts(runes.slice(20, 40).join(''), this.validateOpts);
     // 41-50 CompanyIdentification
-    this.companyIdentification = this.converters.parseStringFieldWithOpts(runes.slice(40, 50).join(''), this.validateOpts);
+    this.companyIdentification = converters.parseStringFieldWithOpts(runes.slice(40, 50).join(''), this.validateOpts);
     // 51-53 StandardEntryClassCode
     this.standardEntryClassCode = runes.slice(50, 53).join('');
     // 54-63 CompanyEntryDescription
-    this.companyEntryDescription = this.converters.parseStringFieldWithOpts(runes.slice(53, 63).join(''), this.validateOpts);
+    this.companyEntryDescription = converters.parseStringFieldWithOpts(runes.slice(53, 63).join(''), this.validateOpts);
     // 64-69 CompanyDescriptiveDate
-    this.companyDescriptiveDate = this.converters.parseStringFieldWithOpts(runes.slice(63, 69).join(''), this.validateOpts);
+    this.companyDescriptiveDate = converters.parseStringFieldWithOpts(runes.slice(63, 69).join(''), this.validateOpts);
     // 70-75 EffectiveEntryDate
-    this.effectiveEntryDate = this.validators.validateSimpleDate(runes.slice(69, 75).join(''));
+    this.effectiveEntryDate = validators.validateSimpleDate(runes.slice(69, 75).join(''));
     // 76-78 SettlementDate (Julian)
-    this.settlementDate = this.validators.validateSettlementDate(runes.slice(75, 78).join(''));
+    this.settlementDate = validators.validateSettlementDate(runes.slice(75, 78).join(''));
     // 79-79 OriginatorStatusCode
-    this.originatorStatusCode = this.converters.parseNumField(runes.slice(78, 79).join(''));
+    this.originatorStatusCode = converters.parseNumField(runes.slice(78, 79).join(''));
     // 80-87 ODFIIdentification
-    this.odfiIdentification = this.converters.parseStringField(runes.slice(79, 87).join(''));
+    this.odfiIdentification = converters.parseStringField(runes.slice(79, 87).join(''));
     // 88-94 BatchNumber
-    this.batchNumber = this.converters.parseNumField(runes.slice(87, 94).join(''));
+    this.batchNumber = converters.parseNumField(runes.slice(87, 94).join(''));
   }
 
   /** String writes the BatchHeader struct to a 94 character string */
@@ -105,31 +102,37 @@ export class BatchHeader {
 
   /** Validate performs NACHA format rule checks */
   validate(): Error | null {
+    const err = this._validate();
+    if (err) enrichError(err, this.lineNumber, batchHeaderFieldPositions);
+    return err;
+  }
+
+  private _validate(): Error | null {
     const inclErr = this.fieldInclusion();
     if (inclErr) return inclErr;
 
-    if (this.validators.isServiceClass(this.serviceClassCode)) {
+    if (validators.isServiceClass(this.serviceClassCode)) {
       return fieldError('ServiceClassCode', ErrServiceClass, this.serviceClassCode);
     }
     if (!this.validateOpts?.skipBatchHeaderCompanyValidation) {
-      if (this.validators.isSECCode(this.standardEntryClassCode)) {
+      if (validators.isSECCode(this.standardEntryClassCode)) {
         return fieldError('StandardEntryClassCode', ErrSECCode, this.standardEntryClassCode);
       }
     }
-    if (this.validators.isOriginatorStatusCode(this.originatorStatusCode)) {
+    if (validators.isOriginatorStatusCode(this.originatorStatusCode)) {
       return fieldError('OriginatorStatusCode', ErrOrigStatusCode, this.originatorStatusCode);
     }
     if (!this.validateOpts?.allowSpecialCharacters) {
-      const nameErr = this.validators.isAlphanumeric(this.companyName);
+      const nameErr = validators.isAlphanumeric(this.companyName);
       if (nameErr) return fieldError('CompanyName', nameErr, this.companyName);
 
-      const discErr = this.validators.isAlphanumeric(this.companyDiscretionaryData);
+      const discErr = validators.isAlphanumeric(this.companyDiscretionaryData);
       if (discErr) return fieldError('CompanyDiscretionaryData', discErr, this.companyDiscretionaryData);
 
-      const descErr = this.validators.isAlphanumeric(this.companyEntryDescription);
+      const descErr = validators.isAlphanumeric(this.companyEntryDescription);
       if (descErr) return fieldError('CompanyEntryDescription', descErr, this.companyEntryDescription);
 
-      const identErr = this.validators.isAlphanumeric(this.companyIdentification);
+      const identErr = validators.isAlphanumeric(this.companyIdentification);
       if (identErr) return fieldError('CompanyIdentification', identErr, this.companyIdentification);
     }
     return null;
@@ -149,22 +152,22 @@ export class BatchHeader {
       if (this.odfiIdentification === '') push(fieldError('ODFIIdentification', ErrConstructor, this.odfiIdentificationField()));
     }
 
-    if (this.validators.isServiceClass(this.serviceClassCode)) {
+    if (validators.isServiceClass(this.serviceClassCode)) {
       push(fieldError('ServiceClassCode', ErrServiceClass, this.serviceClassCode));
     }
     if (!this.validateOpts?.skipBatchHeaderCompanyValidation) {
-      if (this.validators.isSECCode(this.standardEntryClassCode)) {
+      if (validators.isSECCode(this.standardEntryClassCode)) {
         push(fieldError('StandardEntryClassCode', ErrSECCode, this.standardEntryClassCode));
       }
     }
-    if (this.validators.isOriginatorStatusCode(this.originatorStatusCode)) {
+    if (validators.isOriginatorStatusCode(this.originatorStatusCode)) {
       push(fieldError('OriginatorStatusCode', ErrOrigStatusCode, this.originatorStatusCode));
     }
     if (!this.validateOpts?.allowSpecialCharacters) {
-      push(fieldError('CompanyName', this.validators.isAlphanumeric(this.companyName), this.companyName));
-      push(fieldError('CompanyDiscretionaryData', this.validators.isAlphanumeric(this.companyDiscretionaryData), this.companyDiscretionaryData));
-      push(fieldError('CompanyEntryDescription', this.validators.isAlphanumeric(this.companyEntryDescription), this.companyEntryDescription));
-      push(fieldError('CompanyIdentification', this.validators.isAlphanumeric(this.companyIdentification), this.companyIdentification));
+      push(fieldError('CompanyName', validators.isAlphanumeric(this.companyName), this.companyName));
+      push(fieldError('CompanyDiscretionaryData', validators.isAlphanumeric(this.companyDiscretionaryData), this.companyDiscretionaryData));
+      push(fieldError('CompanyEntryDescription', validators.isAlphanumeric(this.companyEntryDescription), this.companyEntryDescription));
+      push(fieldError('CompanyIdentification', validators.isAlphanumeric(this.companyIdentification), this.companyIdentification));
     }
 
     return enrichErrors(errors, this.lineNumber, batchHeaderFieldPositions);
@@ -206,19 +209,19 @@ export class BatchHeader {
   }
 
   // Field formatters
-  serviceClassCodeField(): string { return this.converters.numericField(this.serviceClassCode, 3); }
-  companyNameField(): string { return this.converters.alphaField(this.companyName, 16); }
-  companyDiscretionaryDataField(): string { return this.converters.alphaField(this.companyDiscretionaryData, 20); }
-  companyIdentificationField(): string { return this.converters.alphaField(this.companyIdentification, 10); }
-  companyEntryDescriptionField(): string { return this.converters.alphaField(this.companyEntryDescription, 10); }
-  companyDescriptiveDateField(): string { return this.converters.alphaField(this.companyDescriptiveDate, 6); }
-  effectiveEntryDateField(): string { return this.converters.formatSimpleDate(this.effectiveEntryDate); }
+  serviceClassCodeField(): string { return converters.numericField(this.serviceClassCode, 3); }
+  companyNameField(): string { return converters.alphaField(this.companyName, 16); }
+  companyDiscretionaryDataField(): string { return converters.alphaField(this.companyDiscretionaryData, 20); }
+  companyIdentificationField(): string { return converters.alphaField(this.companyIdentification, 10); }
+  companyEntryDescriptionField(): string { return converters.alphaField(this.companyEntryDescription, 10); }
+  companyDescriptiveDateField(): string { return converters.alphaField(this.companyDescriptiveDate, 6); }
+  effectiveEntryDateField(): string { return converters.formatSimpleDate(this.effectiveEntryDate); }
   settlementDateField(): string {
     if (this.settlementDate === '') return '   ';
-    return this.converters.alphaField(this.settlementDate, 3);
+    return converters.alphaField(this.settlementDate, 3);
   }
-  odfiIdentificationField(): string { return this.converters.stringField(this.odfiIdentification, 8); }
-  batchNumberField(): string { return this.converters.numericField(this.batchNumber, 7); }
+  odfiIdentificationField(): string { return converters.stringField(this.odfiIdentification, 8); }
+  batchNumberField(): string { return converters.numericField(this.batchNumber, 7); }
 }
 
 export function newBatchHeader(): BatchHeader {

@@ -57,6 +57,12 @@ export class BatchCIE extends Batch {
     if (err) return err;
     return this.validate();
   }
+
+  static from(b: Batch): BatchCIE {
+    const inst = new BatchCIE();
+    Batch.copyFrom(b, inst);
+    return inst;
+  }
 }
 
-registerBatchType(CIE, (b: Batch) => Object.setPrototypeOf(b, BatchCIE.prototype) as BatchCIE);
+registerBatchType(CIE, (b: Batch) => BatchCIE.from(b));

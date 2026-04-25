@@ -1,13 +1,13 @@
-import { entryAddendaPos } from './constants.js';
-import { enrichErrors, addenda12FieldPositions } from './fieldPositions.js';
-import type { ValidateOpts } from './validateOpts.js';
-import { Converters } from './utils/converters.js';
-import { Validators } from './utils/validators.js';
+import { entryAddendaPos } from '../constants.js';
+import { enrichErrors, enrichError, addenda12FieldPositions } from '../fieldPositions.js';
+import type { ValidateOpts } from '../validateOpts.js';
+import { Converters, converters } from '../utils/converters.js';
+import { Validators, validators } from '../utils/validators.js';
 import {
   fieldError,
   ErrConstructor,
   ErrAddendaTypeCode,
-} from './errors/index.js';
+} from '../errors/index.js';
 
 /**
  * Addenda12 is an IAT addenda record providing originator city, state/province,
@@ -21,9 +21,6 @@ export class Addenda12 {
   originatorDateOfBirth = '';
   entryDetailSequenceNumber = 0;
   lineNumber = 0;
-
-  private converters = new Converters();
-  private validators = new Validators();
   validateOpts?: ValidateOpts;
 
   parse(record: string): void {
@@ -35,7 +32,7 @@ export class Addenda12 {
     this.originatorCountryPostalCode = runes.slice(38, 73).join('').trim();
     this.originatorDateOfBirth = runes.slice(73, 83).join('').trim();
     // 84-87 Reserved
-    this.entryDetailSequenceNumber = this.converters.parseNumField(runes.slice(87, 94).join(''));
+    this.entryDetailSequenceNumber = converters.parseNumField(runes.slice(87, 94).join(''));
   }
 
   setValidation(opts: ValidateOpts | undefined): void { this.validateOpts = opts; }
@@ -53,15 +50,21 @@ export class Addenda12 {
   }
 
   validate(): Error | null {
+    const err = this._validate();
+    if (err) enrichError(err, this.lineNumber, addenda12FieldPositions);
+    return err;
+  }
+
+  private _validate(): Error | null {
     const inclErr = this.fieldInclusion();
     if (inclErr) return inclErr;
 
     if (this.typeCode !== '12') return fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode);
 
     if (!this.validateOpts?.allowSpecialCharacters) {
-      const cspErr = this.validators.isAlphanumeric(this.originatorCityStateProvince);
+      const cspErr = validators.isAlphanumeric(this.originatorCityStateProvince);
       if (cspErr) return fieldError('OriginatorCityStateProvince', cspErr, this.originatorCityStateProvince);
-      const cpErr = this.validators.isAlphanumeric(this.originatorCountryPostalCode);
+      const cpErr = validators.isAlphanumeric(this.originatorCountryPostalCode);
       if (cpErr) return fieldError('OriginatorCountryPostalCode', cpErr, this.originatorCountryPostalCode);
     }
     return null;
@@ -79,8 +82,8 @@ export class Addenda12 {
 
     if (this.typeCode !== '12') push(fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode));
     if (!this.validateOpts?.allowSpecialCharacters) {
-      push(fieldError('OriginatorCityStateProvince', this.validators.isAlphanumeric(this.originatorCityStateProvince), this.originatorCityStateProvince));
-      push(fieldError('OriginatorCountryPostalCode', this.validators.isAlphanumeric(this.originatorCountryPostalCode), this.originatorCountryPostalCode));
+      push(fieldError('OriginatorCityStateProvince', validators.isAlphanumeric(this.originatorCityStateProvince), this.originatorCityStateProvince));
+      push(fieldError('OriginatorCountryPostalCode', validators.isAlphanumeric(this.originatorCountryPostalCode), this.originatorCountryPostalCode));
     }
 
     return enrichErrors(errors, this.lineNumber, addenda12FieldPositions);
@@ -94,10 +97,10 @@ export class Addenda12 {
     return null;
   }
 
-  originatorCityStateProvinceField(): string { return this.converters.alphaField(this.originatorCityStateProvince, 35); }
-  originatorCountryPostalCodeField(): string { return this.converters.alphaField(this.originatorCountryPostalCode, 35); }
-  originatorDateOfBirthField(): string { return this.converters.alphaField(this.originatorDateOfBirth, 10); }
-  entryDetailSequenceNumberField(): string { return this.converters.numericField(this.entryDetailSequenceNumber, 7); }
+  originatorCityStateProvinceField(): string { return converters.alphaField(this.originatorCityStateProvince, 35); }
+  originatorCountryPostalCodeField(): string { return converters.alphaField(this.originatorCountryPostalCode, 35); }
+  originatorDateOfBirthField(): string { return converters.alphaField(this.originatorDateOfBirth, 10); }
+  entryDetailSequenceNumberField(): string { return converters.numericField(this.entryDetailSequenceNumber, 7); }
 }
 
 export function newAddenda12(): Addenda12 { return new Addenda12(); }

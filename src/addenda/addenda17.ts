@@ -1,13 +1,13 @@
-import { entryAddendaPos } from './constants.js';
-import { enrichErrors, addenda17FieldPositions } from './fieldPositions.js';
-import type { ValidateOpts } from './validateOpts.js';
-import { Converters } from './utils/converters.js';
-import { Validators } from './utils/validators.js';
+import { entryAddendaPos } from '../constants.js';
+import { enrichErrors, enrichError, addenda17FieldPositions } from '../fieldPositions.js';
+import type { ValidateOpts } from '../validateOpts.js';
+import { Converters, converters } from '../utils/converters.js';
+import { Validators, validators } from '../utils/validators.js';
 import {
   fieldError,
   ErrConstructor,
   ErrAddendaTypeCode,
-} from './errors/index.js';
+} from '../errors/index.js';
 
 /**
  * Addenda17 is an IAT addenda record providing payment-related information.
@@ -20,9 +20,6 @@ export class Addenda17 {
   sequenceNumber = 0;
   entryDetailSequenceNumber = 0;
   lineNumber = 0;
-
-  private converters = new Converters();
-  private validators = new Validators();
   validateOpts?: ValidateOpts;
 
   parse(record: string): void {
@@ -31,8 +28,8 @@ export class Addenda17 {
 
     this.typeCode = runes.slice(1, 3).join('');
     this.paymentRelatedInformation = runes.slice(3, 83).join('').trimEnd();
-    this.sequenceNumber = this.converters.parseNumField(runes.slice(83, 87).join(''));
-    this.entryDetailSequenceNumber = this.converters.parseNumField(runes.slice(87, 94).join(''));
+    this.sequenceNumber = converters.parseNumField(runes.slice(83, 87).join(''));
+    this.entryDetailSequenceNumber = converters.parseNumField(runes.slice(87, 94).join(''));
   }
 
   setValidation(opts: ValidateOpts | undefined): void { this.validateOpts = opts; }
@@ -48,13 +45,19 @@ export class Addenda17 {
   }
 
   validate(): Error | null {
+    const err = this._validate();
+    if (err) enrichError(err, this.lineNumber, addenda17FieldPositions);
+    return err;
+  }
+
+  private _validate(): Error | null {
     const inclErr = this.fieldInclusion();
     if (inclErr) return inclErr;
 
     if (this.typeCode !== '17') return fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode);
 
     if (!this.validateOpts?.allowSpecialCharacters) {
-      const err = this.validators.isAlphanumeric(this.paymentRelatedInformation);
+      const err = validators.isAlphanumeric(this.paymentRelatedInformation);
       if (err) return fieldError('PaymentRelatedInformation', err, this.paymentRelatedInformation);
     }
     return null;
@@ -71,7 +74,7 @@ export class Addenda17 {
 
     if (this.typeCode !== '17') push(fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode));
     if (!this.validateOpts?.allowSpecialCharacters) {
-      push(fieldError('PaymentRelatedInformation', this.validators.isAlphanumeric(this.paymentRelatedInformation), this.paymentRelatedInformation));
+      push(fieldError('PaymentRelatedInformation', validators.isAlphanumeric(this.paymentRelatedInformation), this.paymentRelatedInformation));
     }
 
     return enrichErrors(errors, this.lineNumber, addenda17FieldPositions);
@@ -84,9 +87,9 @@ export class Addenda17 {
     return null;
   }
 
-  paymentRelatedInformationField(): string { return this.converters.alphaField(this.paymentRelatedInformation, 80); }
-  sequenceNumberField(): string { return this.converters.numericField(this.sequenceNumber, 4); }
-  entryDetailSequenceNumberField(): string { return this.converters.numericField(this.entryDetailSequenceNumber, 7); }
+  paymentRelatedInformationField(): string { return converters.alphaField(this.paymentRelatedInformation, 80); }
+  sequenceNumberField(): string { return converters.numericField(this.sequenceNumber, 4); }
+  entryDetailSequenceNumberField(): string { return converters.numericField(this.entryDetailSequenceNumber, 7); }
 }
 
 export function newAddenda17(): Addenda17 { return new Addenda17(); }

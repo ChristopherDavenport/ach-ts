@@ -3,10 +3,10 @@ import {
   CategoryForward,
   CIE, MTE,
 } from './constants.js';
-import { enrichErrors, entryDetailFieldPositions } from './fieldPositions.js';
+import { enrichErrors, enrichError, entryDetailFieldPositions } from './fieldPositions.js';
 import type { ValidateOpts } from './validateOpts.js';
-import { Converters } from './utils/converters.js';
-import { Validators, CalculateCheckDigit, readRunes } from './utils/validators.js';
+import { Converters, converters } from './utils/converters.js';
+import { Validators, validators, CalculateCheckDigit, readRunes } from './utils/validators.js';
 import {
   fieldError,
   ErrConstructor,
@@ -65,10 +65,6 @@ export class EntryDetail {
   category = CategoryForward;
   /** Line number at which the record appears */
   lineNumber = 0;
-
-  private converters = new Converters();
-  private validators = new Validators();
-
   validateOpts?: ValidateOpts;
   /** SEC code set from batch context */
   secCode = '';
@@ -85,15 +81,15 @@ export class EntryDetail {
 
     // 1-1 Always "6"
     // 2-3 TransactionCode
-    this.transactionCode = this.converters.parseNumField(runes.slice(1, 3).join(''));
+    this.transactionCode = converters.parseNumField(runes.slice(1, 3).join(''));
     // 4-11 RDFIIdentification
     this.rdfiIdentification = runes.slice(3, 11).join('');
     // 12 CheckDigit
     this.checkDigit = runes.slice(11, 12).join('');
     // 13-29 DFIAccountNumber
-    this.dfiAccountNumber = this.converters.parseStringFieldWithOpts(runes.slice(12, 29).join(''), this.validateOpts);
+    this.dfiAccountNumber = converters.parseStringFieldWithOpts(runes.slice(12, 29).join(''), this.validateOpts);
     // 30-39 Amount
-    this.amount = this.converters.parseNumField(runes.slice(29, 39).join(''));
+    this.amount = converters.parseNumField(runes.slice(29, 39).join(''));
 
     // 40-54 and 55-76: field layout depends on SEC code (CIE/MTE swap order)
     const isCIEorMTE = this.secCode.toUpperCase() === CIE || this.secCode.toUpperCase() === MTE;
@@ -110,7 +106,7 @@ export class EntryDetail {
     // 77-78 DiscretionaryData
     this.discretionaryData = runes.slice(76, 78).join('');
     // 79 AddendaRecordIndicator
-    this.addendaRecordIndicator = this.converters.parseNumField(runes.slice(78, 79).join(''));
+    this.addendaRecordIndicator = converters.parseNumField(runes.slice(78, 79).join(''));
     // 80-94 TraceNumber
     this.traceNumber = runes.slice(79, 94).join('');
   }
@@ -146,6 +142,12 @@ export class EntryDetail {
 
   /** Validate performs NACHA format rule checks */
   validate(): Error | null {
+    const err = this._validate();
+    if (err) enrichError(err, this.lineNumber, entryDetailFieldPositions);
+    return err;
+  }
+
+  private _validate(): Error | null {
     const inclErr = this.fieldInclusion();
     if (inclErr) return inclErr;
 
@@ -154,7 +156,7 @@ export class EntryDetail {
       const err = this.validateOpts.checkTransactionCode(this.transactionCode);
       if (err) return fieldError('TransactionCode', err, String(this.transactionCode));
     } else {
-      const err = this.validators.isTransactionCode(this.transactionCode);
+      const err = validators.isTransactionCode(this.transactionCode);
       if (err) return fieldError('TransactionCode', err, String(this.transactionCode));
     }
 
@@ -166,16 +168,16 @@ export class EntryDetail {
     }
 
     if (!this.validateOpts?.allowSpecialCharacters) {
-      const acctErr = this.validators.isAlphanumeric(this.dfiAccountNumber);
+      const acctErr = validators.isAlphanumeric(this.dfiAccountNumber);
       if (acctErr) return fieldError('DFIAccountNumber', acctErr, this.dfiAccountNumber);
 
-      const idErr = this.validators.isAlphanumeric(this.identificationNumber);
+      const idErr = validators.isAlphanumeric(this.identificationNumber);
       if (idErr) return fieldError('IdentificationNumber', idErr, this.identificationNumber);
 
-      const nameErr = this.validators.isAlphanumeric(this.individualName);
+      const nameErr = validators.isAlphanumeric(this.individualName);
       if (nameErr) return fieldError('IndividualName', nameErr, this.individualName);
 
-      const discErr = this.validators.isAlphanumeric(this.discretionaryData);
+      const discErr = validators.isAlphanumeric(this.discretionaryData);
       if (discErr) return fieldError('DiscretionaryData', discErr, this.discretionaryData);
     }
 
@@ -209,7 +211,7 @@ export class EntryDetail {
     if (this.validateOpts?.checkTransactionCode) {
       push(fieldError('TransactionCode', this.validateOpts.checkTransactionCode(this.transactionCode), String(this.transactionCode)));
     } else {
-      push(fieldError('TransactionCode', this.validators.isTransactionCode(this.transactionCode), String(this.transactionCode)));
+      push(fieldError('TransactionCode', validators.isTransactionCode(this.transactionCode), String(this.transactionCode)));
     }
 
     if (this.amount < 0) push(fieldError('Amount', ErrNegativeAmount, this.amount));
@@ -218,10 +220,10 @@ export class EntryDetail {
     }
 
     if (!this.validateOpts?.allowSpecialCharacters) {
-      push(fieldError('DFIAccountNumber', this.validators.isAlphanumeric(this.dfiAccountNumber), this.dfiAccountNumber));
-      push(fieldError('IdentificationNumber', this.validators.isAlphanumeric(this.identificationNumber), this.identificationNumber));
-      push(fieldError('IndividualName', this.validators.isAlphanumeric(this.individualName), this.individualName));
-      push(fieldError('DiscretionaryData', this.validators.isAlphanumeric(this.discretionaryData), this.discretionaryData));
+      push(fieldError('DFIAccountNumber', validators.isAlphanumeric(this.dfiAccountNumber), this.dfiAccountNumber));
+      push(fieldError('IdentificationNumber', validators.isAlphanumeric(this.identificationNumber), this.identificationNumber));
+      push(fieldError('IndividualName', validators.isAlphanumeric(this.individualName), this.individualName));
+      push(fieldError('DiscretionaryData', validators.isAlphanumeric(this.discretionaryData), this.discretionaryData));
     }
 
     if (!this.validateOpts?.allowInvalidCheckDigit) {
@@ -258,16 +260,16 @@ export class EntryDetail {
 
   /** SetRDFI takes a 9-digit routing number and separates RDFIIdentification and CheckDigit */
   setRDFI(rdfi: string): EntryDetail {
-    const s = this.converters.stringField(rdfi, 9);
-    this.rdfiIdentification = this.converters.parseStringField(s.substring(0, 8));
-    this.checkDigit = this.converters.parseStringField(s.substring(8, 9));
+    const s = converters.stringField(rdfi, 9);
+    this.rdfiIdentification = converters.parseStringField(s.substring(0, 8));
+    this.checkDigit = converters.parseStringField(s.substring(8, 9));
     return this;
   }
 
   /** SetTraceNumber takes first 8 digits of ODFI and concatenates a sequence number */
   setTraceNumber(odfiIdentification: string, seq: number): void {
-    const traceNumber = this.converters.stringField(odfiIdentification, 8) +
-      this.converters.numericField(seq, 7);
+    const traceNumber = converters.stringField(odfiIdentification, 8) +
+      converters.numericField(seq, 7);
     this.traceNumber = traceNumber;
 
     // Propagate to addenda records
@@ -281,40 +283,40 @@ export class EntryDetail {
 
   // --- Field formatters ---
 
-  rdfiIdentificationField(): string { return this.converters.stringField(this.rdfiIdentification, 8); }
-  dfiAccountNumberField(): string { return this.converters.alphaField(this.dfiAccountNumber, 17); }
-  amountField(): string { return this.converters.numericField(this.amount, 10); }
+  rdfiIdentificationField(): string { return converters.stringField(this.rdfiIdentification, 8); }
+  dfiAccountNumberField(): string { return converters.alphaField(this.dfiAccountNumber, 17); }
+  amountField(): string { return converters.numericField(this.amount, 10); }
 
   identificationNumberField(): string {
     const isCIEorMTE = this.secCode.toUpperCase() === CIE || this.secCode.toUpperCase() === MTE;
     const length = isCIEorMTE ? 22 : 15;
-    return this.converters.alphaField(this.identificationNumber, length);
+    return converters.alphaField(this.identificationNumber, length);
   }
 
   individualNameField(): string {
     const isCIEorMTE = this.secCode.toUpperCase() === CIE || this.secCode.toUpperCase() === MTE;
     const length = isCIEorMTE ? 15 : 22;
-    return this.converters.alphaField(this.individualName, length);
+    return converters.alphaField(this.individualName, length);
   }
 
-  checkSerialNumberField(): string { return this.converters.alphaField(this.identificationNumber, 15); }
+  checkSerialNumberField(): string { return converters.alphaField(this.identificationNumber, 15); }
   setCheckSerialNumber(s: string): void { this.identificationNumber = s; }
 
   // POP helpers
-  setPOPCheckSerialNumber(s: string): void { this.identificationNumber = this.converters.alphaField(s, 9); }
-  setPOPTerminalCity(s: string): void { this.identificationNumber += this.converters.alphaField(s, 4); }
-  setPOPTerminalState(s: string): void { this.identificationNumber += this.converters.alphaField(s, 2); }
-  popCheckSerialNumberField(): string { return this.converters.parseStringField(readRunes(0, 9, this.identificationNumber)); }
-  popTerminalCityField(): string { return this.converters.parseStringField(readRunes(9, 4, this.identificationNumber)); }
-  popTerminalStateField(): string { return this.converters.parseStringField(readRunes(13, 2, this.identificationNumber)); }
+  setPOPCheckSerialNumber(s: string): void { this.identificationNumber = converters.alphaField(s, 9); }
+  setPOPTerminalCity(s: string): void { this.identificationNumber += converters.alphaField(s, 4); }
+  setPOPTerminalState(s: string): void { this.identificationNumber += converters.alphaField(s, 2); }
+  popCheckSerialNumberField(): string { return converters.parseStringField(readRunes(0, 9, this.identificationNumber)); }
+  popTerminalCityField(): string { return converters.parseStringField(readRunes(9, 4, this.identificationNumber)); }
+  popTerminalStateField(): string { return converters.parseStringField(readRunes(13, 2, this.identificationNumber)); }
 
   // SHR helpers
-  setSHRCardExpirationDate(s: string): void { this.identificationNumber = this.converters.alphaField(s, 4); }
-  setSHRDocumentReferenceNumber(s: string): void { this.identificationNumber += this.converters.stringField(s, 11); }
-  setSHRIndividualCardAccountNumber(s: string): void { this.individualName = this.converters.stringField(s, 22); }
-  shrCardExpirationDateField(): string { return this.converters.alphaField(this.converters.parseStringField(readRunes(0, 4, this.identificationNumber)), 4); }
-  shrDocumentReferenceNumberField(): string { return this.converters.stringField(readRunes(4, 11, this.identificationNumber), 11); }
-  shrIndividualCardAccountNumberField(): string { return this.converters.stringField(this.individualName, 22); }
+  setSHRCardExpirationDate(s: string): void { this.identificationNumber = converters.alphaField(s, 4); }
+  setSHRDocumentReferenceNumber(s: string): void { this.identificationNumber += converters.stringField(s, 11); }
+  setSHRIndividualCardAccountNumber(s: string): void { this.individualName = converters.stringField(s, 22); }
+  shrCardExpirationDateField(): string { return converters.alphaField(converters.parseStringField(readRunes(0, 4, this.identificationNumber)), 4); }
+  shrDocumentReferenceNumberField(): string { return converters.stringField(readRunes(4, 11, this.identificationNumber), 11); }
+  shrIndividualCardAccountNumberField(): string { return converters.stringField(this.individualName, 22); }
 
   // CCD helpers
   receivingCompanyField(): string { return this.individualNameField(); }
@@ -327,27 +329,27 @@ export class EntryDetail {
   // CTX/ATX helpers
   setCATXAddendaRecords(i: number): void {
     this.addendaRecordIndicator = i;
-    const count = this.converters.numericField(i, 4);
+    const count = converters.numericField(i, 4);
     const current = this.individualName;
     if ([...current].length > 4) {
       this.individualName = count + current.substring(4);
     } else {
-      this.individualName = count + this.converters.alphaField(' ', 16) + '  ';
+      this.individualName = count + converters.alphaField(' ', 16) + '  ';
     }
   }
 
   setCATXReceivingCompany(s: string): void {
     const current = this.individualName;
     if ([...current].length > 4) {
-      this.individualName = current.substring(0, 4) + this.converters.alphaField(s, 16) + '  ';
+      this.individualName = current.substring(0, 4) + converters.alphaField(s, 16) + '  ';
     } else {
-      this.individualName = '0000' + this.converters.alphaField(s, 16) + '  ';
+      this.individualName = '0000' + converters.alphaField(s, 16) + '  ';
     }
   }
 
   catxAddendaRecordsField(): string {
     if ([...this.individualName].length < 5) return this.individualName;
-    return this.converters.parseStringField(readRunes(0, 4, this.individualName));
+    return converters.parseStringField(readRunes(0, 4, this.individualName));
   }
 
   catxReceivingCompanyField(): string {
@@ -359,7 +361,7 @@ export class EntryDetail {
     return readRunes(20, 22, this.individualName);
   }
 
-  discretionaryDataField(): string { return this.converters.alphaField(this.discretionaryData, 2); }
+  discretionaryDataField(): string { return converters.alphaField(this.discretionaryData, 2); }
 
   // WEB/TEL PaymentType helpers
   paymentTypeField(): string {
@@ -373,14 +375,14 @@ export class EntryDetail {
   }
 
   // TRC helpers
-  setProcessControlField(s: string): void { this.individualName = this.converters.alphaField(s, 6); }
-  setItemResearchNumber(s: string): void { this.individualName += this.converters.alphaField(s, 16); }
-  setItemTypeIndicator(s: string): void { this.discretionaryData = this.converters.alphaField(s, 2); }
-  processControlField(): string { return this.converters.parseStringField(readRunes(0, 6, this.individualName)); }
-  itemResearchNumber(): string { return this.converters.parseStringField(readRunes(7, 16, this.individualName)); }
+  setProcessControlField(s: string): void { this.individualName = converters.alphaField(s, 6); }
+  setItemResearchNumber(s: string): void { this.individualName += converters.alphaField(s, 16); }
+  setItemTypeIndicator(s: string): void { this.discretionaryData = converters.alphaField(s, 2); }
+  processControlField(): string { return converters.parseStringField(readRunes(0, 6, this.individualName)); }
+  itemResearchNumber(): string { return converters.parseStringField(readRunes(7, 16, this.individualName)); }
   itemTypeIndicator(): string { return this.discretionaryData; }
 
-  traceNumberField(): string { return this.converters.stringField(this.traceNumber, 15); }
+  traceNumberField(): string { return converters.stringField(this.traceNumber, 15); }
 
   /** Returns "C" for credit or "D" for debit based on TransactionCode */
   creditOrDebit(): string {

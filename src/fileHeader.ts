@@ -16,10 +16,10 @@
 // under the License.
 
 import { fileHeaderPos } from './constants.js';
-import { enrichErrors, fileHeaderFieldPositions } from './fieldPositions.js';
+import { enrichErrors, enrichError, fileHeaderFieldPositions } from './fieldPositions.js';
 import type { ValidateOpts } from './validateOpts.js';
-import { Converters } from './utils/converters.js';
-import { Validators, CheckRoutingNumber } from './utils/validators.js';
+import { Converters, converters } from './utils/converters.js';
+import { Validators, validators, CheckRoutingNumber } from './utils/validators.js';
 import {
   fieldError,
   ErrConstructor,
@@ -78,9 +78,6 @@ export class FileHeader {
   lineNumber = 0;
 
   // Composed utilities
-  private converters = new Converters();
-  private validators = new Validators();
-
   /** ValidateOpts for overriding default NACHA validation */
   validateOpts?: ValidateOpts;
 
@@ -97,16 +94,16 @@ export class FileHeader {
     this.priorityCode = '01';
     // (4-13) Routing number with leading space
     this.immediateDestination = trimRoutingNumberLeadingZero(
-      this.converters.parseStringField(runes.slice(3, 13).join(''))
+      converters.parseStringField(runes.slice(3, 13).join(''))
     );
     // (14-23) Origin routing number
     this.immediateOrigin = trimRoutingNumberLeadingZero(
-      this.converters.parseStringField(runes.slice(13, 23).join(''))
+      converters.parseStringField(runes.slice(13, 23).join(''))
     );
     // (24-29) Creation date YYMMDD
-    this.fileCreationDate = this.validators.validateSimpleDate(runes.slice(23, 29).join(''));
+    this.fileCreationDate = validators.validateSimpleDate(runes.slice(23, 29).join(''));
     // (30-33) Creation time HHmm
-    this.fileCreationTime = this.validators.validateSimpleTime(runes.slice(29, 33).join(''));
+    this.fileCreationTime = validators.validateSimpleTime(runes.slice(29, 33).join(''));
     // (34) File ID Modifier
     this.fileIDModifier = runes.slice(33, 34).join('');
     // (35-37) Record size always "094"
@@ -114,17 +111,17 @@ export class FileHeader {
     // (38-39) Blocking factor always "10"
     this.blockingFactor = '10';
     // (40) Format code
-    this.formatCode = this.converters.parseStringField(runes.slice(39, 40).join(''));
+    this.formatCode = converters.parseStringField(runes.slice(39, 40).join(''));
     // (41-63) Destination name
-    this.immediateDestinationName = this.converters.parseStringFieldWithOpts(
+    this.immediateDestinationName = converters.parseStringFieldWithOpts(
       runes.slice(40, 63).join(''), this.validateOpts
     );
     // (64-86) Origin name
-    this.immediateOriginName = this.converters.parseStringFieldWithOpts(
+    this.immediateOriginName = converters.parseStringFieldWithOpts(
       runes.slice(63, 86).join(''), this.validateOpts
     );
     // (87-94) Reference code
-    this.referenceCode = this.converters.parseStringFieldWithOpts(
+    this.referenceCode = converters.parseStringFieldWithOpts(
       runes.slice(86, 94).join(''), this.validateOpts
     );
   }
@@ -155,7 +152,9 @@ export class FileHeader {
 
   /** Validate performs NACHA format rule checks */
   validate(): Error | null {
-    return this.validateWith(this.validateOpts);
+    const err = this.validateWith(this.validateOpts);
+    if (err) enrichError(err, this.lineNumber, fileHeaderFieldPositions);
+    return err;
   }
 
   /** ValidateWith performs NACHA format rule checks with custom options */
@@ -166,7 +165,7 @@ export class FileHeader {
     if (inclErr) return inclErr;
 
     // FileIDModifier must be uppercase alphanumeric
-    const upperErr = this.validators.isUpperASCII(this.fileIDModifier);
+    const upperErr = validators.isUpperASCII(this.fileIDModifier);
     if (upperErr) return fieldError('FileIDModifier', upperErr, this.fileIDModifier);
 
     if ([...this.fileIDModifier].length !== 1) {
@@ -205,13 +204,13 @@ export class FileHeader {
 
     // Alphanumeric checks (unless special characters allowed)
     if (!this.validateOpts?.allowSpecialCharacters) {
-      const destNameErr = this.validators.isAlphanumeric(this.immediateDestinationName);
+      const destNameErr = validators.isAlphanumeric(this.immediateDestinationName);
       if (destNameErr) return fieldError('ImmediateDestinationName', destNameErr, this.immediateDestinationName);
 
-      const origNameErr = this.validators.isAlphanumeric(this.immediateOriginName);
+      const origNameErr = validators.isAlphanumeric(this.immediateOriginName);
       if (origNameErr) return fieldError('ImmediateOriginName', origNameErr, this.immediateOriginName);
 
-      const refErr = this.validators.isAlphanumeric(this.referenceCode);
+      const refErr = validators.isAlphanumeric(this.referenceCode);
       if (refErr) return fieldError('ReferenceCode', refErr, this.referenceCode);
     }
 
@@ -257,7 +256,7 @@ export class FileHeader {
     }
 
     // FileIDModifier must be uppercase alphanumeric
-    push(fieldError('FileIDModifier', this.validators.isUpperASCII(this.fileIDModifier), this.fileIDModifier));
+    push(fieldError('FileIDModifier', validators.isUpperASCII(this.fileIDModifier), this.fileIDModifier));
     if ([...this.fileIDModifier].length !== 1) {
       push(fieldError('FileIDModifier', new ErrValidFieldLength(1), this.fileIDModifier));
     }
@@ -285,9 +284,9 @@ export class FileHeader {
 
     // Alphanumeric checks (unless special characters allowed)
     if (!this.validateOpts?.allowSpecialCharacters) {
-      push(fieldError('ImmediateDestinationName', this.validators.isAlphanumeric(this.immediateDestinationName), this.immediateDestinationName));
-      push(fieldError('ImmediateOriginName', this.validators.isAlphanumeric(this.immediateOriginName), this.immediateOriginName));
-      push(fieldError('ReferenceCode', this.validators.isAlphanumeric(this.referenceCode), this.referenceCode));
+      push(fieldError('ImmediateDestinationName', validators.isAlphanumeric(this.immediateDestinationName), this.immediateDestinationName));
+      push(fieldError('ImmediateOriginName', validators.isAlphanumeric(this.immediateOriginName), this.immediateOriginName));
+      push(fieldError('ReferenceCode', validators.isAlphanumeric(this.referenceCode), this.referenceCode));
     }
 
     // File creation date/time validation
@@ -340,7 +339,7 @@ export class FileHeader {
     if (this.validateOpts?.bypassDestinationValidation && this.immediateDestination.length === 10) {
       return this.immediateDestination;
     }
-    return ' ' + this.converters.stringField(this.immediateDestination, 9);
+    return ' ' + converters.stringField(this.immediateDestination, 9);
   }
 
   /** ImmediateOriginField gets the immediate origin number with space padding */
@@ -352,7 +351,7 @@ export class FileHeader {
     if (this.validateOpts?.bypassOriginValidation && this.immediateOrigin.length === 10) {
       return this.immediateOrigin;
     }
-    return ' ' + this.converters.stringField(this.immediateOrigin, 9);
+    return ' ' + converters.stringField(this.immediateOrigin, 9);
   }
 
   /** FileCreationDateField gets the file creation date in YYMMDD format */
@@ -368,7 +367,7 @@ export class FileHeader {
         return `${yy}${mm}${dd}`;
       }
       case 6:
-        return this.converters.formatSimpleDate(this.fileCreationDate);
+        return converters.formatSimpleDate(this.fileCreationDate);
     }
     // Try ISO 8601 parsing
     const d = new Date(this.fileCreationDate);
@@ -391,7 +390,7 @@ export class FileHeader {
         return `${hh}${mm}`;
       }
       case 4:
-        return this.converters.formatSimpleTime(this.fileCreationTime);
+        return converters.formatSimpleTime(this.fileCreationTime);
     }
     // Try ISO 8601 parsing
     const d = new Date(this.fileCreationTime);
@@ -403,17 +402,17 @@ export class FileHeader {
 
   /** ImmediateDestinationNameField gets the padded destination name */
   immediateDestinationNameField(): string {
-    return this.converters.alphaField(this.immediateDestinationName, 23);
+    return converters.alphaField(this.immediateDestinationName, 23);
   }
 
   /** ImmediateOriginNameField gets the padded origin name */
   immediateOriginNameField(): string {
-    return this.converters.alphaField(this.immediateOriginName, 23);
+    return converters.alphaField(this.immediateOriginName, 23);
   }
 
   /** ReferenceCodeField gets the padded reference code */
   referenceCodeField(): string {
-    return this.converters.alphaField(this.referenceCode, 8);
+    return converters.alphaField(this.referenceCode, 8);
   }
 }
 

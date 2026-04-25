@@ -1,8 +1,8 @@
-import { entryAddendaPos } from './constants.js';
-import { enrichErrors, addenda02FieldPositions } from './fieldPositions.js';
-import type { ValidateOpts } from './validateOpts.js';
-import { Converters } from './utils/converters.js';
-import { Validators } from './utils/validators.js';
+import { entryAddendaPos } from '../constants.js';
+import { enrichErrors, enrichError, addenda02FieldPositions } from '../fieldPositions.js';
+import type { ValidateOpts } from '../validateOpts.js';
+import { Converters, converters } from '../utils/converters.js';
+import { Validators, validators } from '../utils/validators.js';
 import {
   fieldError,
   ErrConstructor,
@@ -10,7 +10,7 @@ import {
   ErrAddendaTypeCode,
   ErrValidMonth,
   ErrValidDay,
-} from './errors/index.js';
+} from '../errors/index.js';
 
 /**
  * Addenda02 provides business transaction information for POS, SHR, and MTE entries.
@@ -29,9 +29,6 @@ export class Addenda02 {
   terminalState = '';
   traceNumber = '';
   lineNumber = 0;
-
-  private converters = new Converters();
-  private validators = new Validators();
   validateOpts?: ValidateOpts;
 
   parse(record: string): void {
@@ -85,10 +82,16 @@ export class Addenda02 {
   }
 
   validate(): Error | null {
+    const err = this._validate();
+    if (err) enrichError(err, this.lineNumber, addenda02FieldPositions);
+    return err;
+  }
+
+  private _validate(): Error | null {
     const inclErr = this.fieldInclusion();
     if (inclErr) return inclErr;
 
-    if (this.validators.isTypeCode(this.typeCode)) {
+    if (validators.isTypeCode(this.typeCode)) {
       return fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode);
     }
     if (this.typeCode !== '02') {
@@ -106,19 +109,19 @@ export class Addenda02 {
         ['TerminalCity', this.terminalCity],
         ['TerminalState', this.terminalState],
       ] as const) {
-        const err = this.validators.isAlphanumeric(val);
+        const err = validators.isAlphanumeric(val);
         if (err) return fieldError(name, err, val);
       }
     }
 
     // TransactionDate MMDD validation
     const dateField = this.transactionDateField();
-    const mm = this.converters.parseStringField(dateField.substring(0, 2));
-    const dd = this.converters.parseStringField(dateField.substring(2, 4));
-    if (this.validators.isMonth(mm)) {
+    const mm = converters.parseStringField(dateField.substring(0, 2));
+    const dd = converters.parseStringField(dateField.substring(2, 4));
+    if (validators.isMonth(mm)) {
       return fieldError('TransactionDate', ErrValidMonth, mm);
     }
-    if (this.validators.isDay(mm, dd)) {
+    if (validators.isDay(mm, dd)) {
       return fieldError('TransactionDate', ErrValidDay, mm);
     }
 
@@ -138,7 +141,7 @@ export class Addenda02 {
     if (this.terminalCity === '') push(fieldError('TerminalCity', ErrFieldRequired, this.terminalCity));
     if (this.terminalState === '') push(fieldError('TerminalState', ErrFieldRequired, this.terminalState));
 
-    if (this.validators.isTypeCode(this.typeCode)) push(fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode));
+    if (validators.isTypeCode(this.typeCode)) push(fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode));
     if (this.typeCode !== '02') push(fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode));
 
     if (!this.validateOpts?.allowSpecialCharacters) {
@@ -152,16 +155,16 @@ export class Addenda02 {
         ['TerminalCity', this.terminalCity],
         ['TerminalState', this.terminalState],
       ] as const) {
-        push(fieldError(name, this.validators.isAlphanumeric(val), val));
+        push(fieldError(name, validators.isAlphanumeric(val), val));
       }
     }
 
     // TransactionDate MMDD validation
     const dateField = this.transactionDateField();
-    const mm = this.converters.parseStringField(dateField.substring(0, 2));
-    const dd = this.converters.parseStringField(dateField.substring(2, 4));
-    if (this.validators.isMonth(mm)) push(fieldError('TransactionDate', ErrValidMonth, mm));
-    if (this.validators.isDay(mm, dd)) push(fieldError('TransactionDate', ErrValidDay, mm));
+    const mm = converters.parseStringField(dateField.substring(0, 2));
+    const dd = converters.parseStringField(dateField.substring(2, 4));
+    if (validators.isMonth(mm)) push(fieldError('TransactionDate', ErrValidMonth, mm));
+    if (validators.isDay(mm, dd)) push(fieldError('TransactionDate', ErrValidDay, mm));
 
     return enrichErrors(errors, this.lineNumber, addenda02FieldPositions);
   }
@@ -176,16 +179,16 @@ export class Addenda02 {
     return null;
   }
 
-  referenceInformationOneField(): string { return this.converters.alphaField(this.referenceInformationOne, 7); }
-  referenceInformationTwoField(): string { return this.converters.alphaField(this.referenceInformationTwo, 3); }
-  terminalIdentificationCodeField(): string { return this.converters.alphaField(this.terminalIdentificationCode, 6); }
-  transactionSerialNumberField(): string { return this.converters.alphaField(this.transactionSerialNumber, 6); }
-  transactionDateField(): string { return this.converters.alphaField(this.transactionDate, 4); }
-  authorizationCodeOrExpireDateField(): string { return this.converters.alphaField(this.authorizationCodeOrExpireDate, 6); }
-  terminalLocationField(): string { return this.converters.alphaField(this.terminalLocation, 27); }
-  terminalCityField(): string { return this.converters.alphaField(this.terminalCity, 15); }
-  terminalStateField(): string { return this.converters.alphaField(this.terminalState, 2); }
-  traceNumberField(): string { return this.converters.stringField(this.traceNumber, 15); }
+  referenceInformationOneField(): string { return converters.alphaField(this.referenceInformationOne, 7); }
+  referenceInformationTwoField(): string { return converters.alphaField(this.referenceInformationTwo, 3); }
+  terminalIdentificationCodeField(): string { return converters.alphaField(this.terminalIdentificationCode, 6); }
+  transactionSerialNumberField(): string { return converters.alphaField(this.transactionSerialNumber, 6); }
+  transactionDateField(): string { return converters.alphaField(this.transactionDate, 4); }
+  authorizationCodeOrExpireDateField(): string { return converters.alphaField(this.authorizationCodeOrExpireDate, 6); }
+  terminalLocationField(): string { return converters.alphaField(this.terminalLocation, 27); }
+  terminalCityField(): string { return converters.alphaField(this.terminalCity, 15); }
+  terminalStateField(): string { return converters.alphaField(this.terminalState, 2); }
+  traceNumberField(): string { return converters.stringField(this.traceNumber, 15); }
 }
 
 export function newAddenda02(): Addenda02 {

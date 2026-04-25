@@ -47,6 +47,12 @@ export class BatchCCD extends Batch {
     if (err) return err;
     return this.validate();
   }
+
+  static from(b: Batch): BatchCCD {
+    const inst = new BatchCCD();
+    Batch.copyFrom(b, inst);
+    return inst;
+  }
 }
 
-registerBatchType(CCD, (b: Batch) => Object.setPrototypeOf(b, BatchCCD.prototype) as BatchCCD);
+registerBatchType(CCD, (b: Batch) => BatchCCD.from(b));

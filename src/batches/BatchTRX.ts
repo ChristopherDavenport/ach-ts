@@ -60,6 +60,12 @@ export class BatchTRX extends Batch {
     if (err) return err;
     return this.validate();
   }
+
+  static from(b: Batch): BatchTRX {
+    const inst = new BatchTRX();
+    Batch.copyFrom(b, inst);
+    return inst;
+  }
 }
 
-registerBatchType(TRX, (b: Batch) => Object.setPrototypeOf(b, BatchTRX.prototype) as BatchTRX);
+registerBatchType(TRX, (b: Batch) => BatchTRX.from(b));

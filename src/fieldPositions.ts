@@ -65,16 +65,28 @@ export function enrichErrors(
   positions: Record<string, FieldPosition>,
 ): Error[] {
   for (const err of errors) {
-    if (err instanceof FieldError) {
-      err.line = lineNumber;
-      const pos = positions[err.fieldName];
-      if (pos) {
-        err.startColumn = pos.start;
-        err.endColumn = pos.end;
-      }
-    }
+    enrichError(err, lineNumber, positions);
   }
   return errors;
+}
+
+/**
+ * Enrich a single FieldError with positional data. Mutates in-place.
+ * No-op if the error is not a FieldError.
+ */
+export function enrichError(
+  err: Error,
+  lineNumber: number,
+  positions: Record<string, FieldPosition>,
+): void {
+  if (err instanceof FieldError) {
+    err.line = lineNumber;
+    const pos = positions[err.fieldName];
+    if (pos) {
+      err.startColumn = pos.start;
+      err.endColumn = pos.end;
+    }
+  }
 }
 
 // ============================================================

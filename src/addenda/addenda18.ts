@@ -1,13 +1,13 @@
-import { entryAddendaPos } from './constants.js';
-import { enrichErrors, addenda18FieldPositions } from './fieldPositions.js';
-import type { ValidateOpts } from './validateOpts.js';
-import { Converters } from './utils/converters.js';
-import { Validators } from './utils/validators.js';
+import { entryAddendaPos } from '../constants.js';
+import { enrichErrors, enrichError, addenda18FieldPositions } from '../fieldPositions.js';
+import type { ValidateOpts } from '../validateOpts.js';
+import { Converters, converters } from '../utils/converters.js';
+import { Validators, validators } from '../utils/validators.js';
 import {
   fieldError,
   ErrConstructor,
   ErrAddendaTypeCode,
-} from './errors/index.js';
+} from '../errors/index.js';
 
 /**
  * Addenda18 is an IAT addenda record providing foreign correspondent bank information.
@@ -23,9 +23,6 @@ export class Addenda18 {
   sequenceNumber = 0;
   entryDetailSequenceNumber = 0;
   lineNumber = 0;
-
-  private converters = new Converters();
-  private validators = new Validators();
   validateOpts?: ValidateOpts;
 
   parse(record: string): void {
@@ -38,8 +35,8 @@ export class Addenda18 {
     this.foreignCorrespondentBankIDNumber = runes.slice(40, 74).join('').trim();
     this.foreignCorrespondentBankBranchCountryCode = runes.slice(74, 77).join('').trim();
     // 78-83 Reserved
-    this.sequenceNumber = this.converters.parseNumField(runes.slice(83, 87).join(''));
-    this.entryDetailSequenceNumber = this.converters.parseNumField(runes.slice(87, 94).join(''));
+    this.sequenceNumber = converters.parseNumField(runes.slice(83, 87).join(''));
+    this.entryDetailSequenceNumber = converters.parseNumField(runes.slice(87, 94).join(''));
   }
 
   setValidation(opts: ValidateOpts | undefined): void { this.validateOpts = opts; }
@@ -59,6 +56,12 @@ export class Addenda18 {
   }
 
   validate(): Error | null {
+    const err = this._validate();
+    if (err) enrichError(err, this.lineNumber, addenda18FieldPositions);
+    return err;
+  }
+
+  private _validate(): Error | null {
     const inclErr = this.fieldInclusion();
     if (inclErr) return inclErr;
 
@@ -71,7 +74,7 @@ export class Addenda18 {
         ['ForeignCorrespondentBankIDNumber', this.foreignCorrespondentBankIDNumber],
         ['ForeignCorrespondentBankBranchCountryCode', this.foreignCorrespondentBankBranchCountryCode],
       ] as const) {
-        const err = this.validators.isAlphanumeric(val);
+        const err = validators.isAlphanumeric(val);
         if (err) return fieldError(name, err, val);
       }
     }
@@ -99,7 +102,7 @@ export class Addenda18 {
         ['ForeignCorrespondentBankIDNumber', this.foreignCorrespondentBankIDNumber],
         ['ForeignCorrespondentBankBranchCountryCode', this.foreignCorrespondentBankBranchCountryCode],
       ] as const) {
-        push(fieldError(name, this.validators.isAlphanumeric(val), val));
+        push(fieldError(name, validators.isAlphanumeric(val), val));
       }
     }
 
@@ -117,12 +120,12 @@ export class Addenda18 {
     return null;
   }
 
-  foreignCorrespondentBankNameField(): string { return this.converters.alphaField(this.foreignCorrespondentBankName, 35); }
-  foreignCorrespondentBankIDNumberQualifierField(): string { return this.converters.alphaField(this.foreignCorrespondentBankIDNumberQualifier, 2); }
-  foreignCorrespondentBankIDNumberField(): string { return this.converters.alphaField(this.foreignCorrespondentBankIDNumber, 34); }
-  foreignCorrespondentBankBranchCountryCodeField(): string { return this.converters.alphaField(this.foreignCorrespondentBankBranchCountryCode, 3); }
-  sequenceNumberField(): string { return this.converters.numericField(this.sequenceNumber, 4); }
-  entryDetailSequenceNumberField(): string { return this.converters.numericField(this.entryDetailSequenceNumber, 7); }
+  foreignCorrespondentBankNameField(): string { return converters.alphaField(this.foreignCorrespondentBankName, 35); }
+  foreignCorrespondentBankIDNumberQualifierField(): string { return converters.alphaField(this.foreignCorrespondentBankIDNumberQualifier, 2); }
+  foreignCorrespondentBankIDNumberField(): string { return converters.alphaField(this.foreignCorrespondentBankIDNumber, 34); }
+  foreignCorrespondentBankBranchCountryCodeField(): string { return converters.alphaField(this.foreignCorrespondentBankBranchCountryCode, 3); }
+  sequenceNumberField(): string { return converters.numericField(this.sequenceNumber, 4); }
+  entryDetailSequenceNumberField(): string { return converters.numericField(this.entryDetailSequenceNumber, 7); }
 }
 
 export function newAddenda18(): Addenda18 { return new Addenda18(); }

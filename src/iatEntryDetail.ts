@@ -1,25 +1,25 @@
 import { entryDetailPos, CategoryForward } from './constants.js';
-import { enrichErrors, iatEntryDetailFieldPositions } from './fieldPositions.js';
+import { enrichErrors, enrichError, iatEntryDetailFieldPositions } from './fieldPositions.js';
 import type { ValidateOpts } from './validateOpts.js';
-import { Converters } from './utils/converters.js';
-import { Validators } from './utils/validators.js';
+import { Converters, converters } from './utils/converters.js';
+import { Validators, validators } from './utils/validators.js';
 import { CalculateCheckDigit } from './utils/validators.js';
 import {
   fieldError,
   ErrConstructor,
   ErrValidCheckDigit,
 } from './errors/index.js';
-import type { Addenda10 } from './addenda10.js';
-import type { Addenda11 } from './addenda11.js';
-import type { Addenda12 } from './addenda12.js';
-import type { Addenda13 } from './addenda13.js';
-import type { Addenda14 } from './addenda14.js';
-import type { Addenda15 } from './addenda15.js';
-import type { Addenda16 } from './addenda16.js';
-import type { Addenda17 } from './addenda17.js';
-import type { Addenda18 } from './addenda18.js';
-import type { Addenda98 } from './addenda98.js';
-import type { Addenda99 } from './addenda99.js';
+import type { Addenda10 } from './addenda/addenda10.js';
+import type { Addenda11 } from './addenda/addenda11.js';
+import type { Addenda12 } from './addenda/addenda12.js';
+import type { Addenda13 } from './addenda/addenda13.js';
+import type { Addenda14 } from './addenda/addenda14.js';
+import type { Addenda15 } from './addenda/addenda15.js';
+import type { Addenda16 } from './addenda/addenda16.js';
+import type { Addenda17 } from './addenda/addenda17.js';
+import type { Addenda18 } from './addenda/addenda18.js';
+import type { Addenda98 } from './addenda/addenda98.js';
+import type { Addenda99 } from './addenda/addenda99.js';
 
 /**
  * IATEntryDetail contains the actual transaction data for an individual IAT entry.
@@ -51,26 +51,23 @@ export class IATEntryDetail {
 
   category = CategoryForward;
   lineNumber = 0;
-
-  protected converters = new Converters();
-  protected validators = new Validators();
   validateOpts?: ValidateOpts;
 
   parse(record: string): void {
     if (record.length !== 94) return;
-    this.transactionCode = this.converters.parseNumField(record.substring(1, 3));
-    this.rdfiIdentification = this.converters.parseStringField(record.substring(3, 11));
-    this.checkDigit = this.converters.parseStringField(record.substring(11, 12));
-    this.addendaRecords = this.converters.parseNumField(record.substring(12, 16));
+    this.transactionCode = converters.parseNumField(record.substring(1, 3));
+    this.rdfiIdentification = converters.parseStringField(record.substring(3, 11));
+    this.checkDigit = converters.parseStringField(record.substring(11, 12));
+    this.addendaRecords = converters.parseNumField(record.substring(12, 16));
     // 17-29 reserved
-    this.amount = this.converters.parseNumField(record.substring(29, 39));
+    this.amount = converters.parseNumField(record.substring(29, 39));
     this.dfiAccountNumber = record.substring(39, 74).trimEnd();
     // 75-76 reserved
     // 77 OFAC
     this.ofacScreeningIndicator = ' ';
     // 78 SecondaryOFAC
     this.secondaryOFACScreeningIndicator = ' ';
-    this.addendaRecordIndicator = this.converters.parseNumField(record.substring(78, 79));
+    this.addendaRecordIndicator = converters.parseNumField(record.substring(78, 79));
     this.traceNumber = record.substring(79, 94).trim();
   }
 
@@ -96,6 +93,12 @@ export class IATEntryDetail {
   }
 
   validate(): Error | null {
+    const err = this._validate();
+    if (err) enrichError(err, this.lineNumber, iatEntryDetailFieldPositions);
+    return err;
+  }
+
+  private _validate(): Error | null {
     const fiErr = this.fieldInclusion();
     if (fiErr) return fiErr;
 
@@ -103,11 +106,11 @@ export class IATEntryDetail {
       const err = this.validateOpts.checkTransactionCode(this.transactionCode);
       if (err) return fieldError('TransactionCode', err, String(this.transactionCode));
     } else {
-      const err = this.validators.isTransactionCode(this.transactionCode);
+      const err = validators.isTransactionCode(this.transactionCode);
       if (err) return fieldError('TransactionCode', err, String(this.transactionCode));
     }
     if (!this.validateOpts?.allowSpecialCharacters) {
-      const err = this.validators.isAlphanumeric(this.dfiAccountNumber);
+      const err = validators.isAlphanumeric(this.dfiAccountNumber);
       if (err) return fieldError('DFIAccountNumber', err, this.dfiAccountNumber);
     }
     const calculated = CalculateCheckDigit(this.rdfiIdentificationField());
@@ -134,10 +137,10 @@ export class IATEntryDetail {
     if (this.validateOpts?.checkTransactionCode) {
       push(fieldError('TransactionCode', this.validateOpts.checkTransactionCode(this.transactionCode), String(this.transactionCode)));
     } else {
-      push(fieldError('TransactionCode', this.validators.isTransactionCode(this.transactionCode), String(this.transactionCode)));
+      push(fieldError('TransactionCode', validators.isTransactionCode(this.transactionCode), String(this.transactionCode)));
     }
     if (!this.validateOpts?.allowSpecialCharacters) {
-      push(fieldError('DFIAccountNumber', this.validators.isAlphanumeric(this.dfiAccountNumber), this.dfiAccountNumber));
+      push(fieldError('DFIAccountNumber', validators.isAlphanumeric(this.dfiAccountNumber), this.dfiAccountNumber));
     }
     const calculated = CalculateCheckDigit(this.rdfiIdentificationField());
     const edCheckDigit = parseInt(this.checkDigit, 10);
@@ -163,14 +166,14 @@ export class IATEntryDetail {
   }
 
   setRDFI(rdfi: string): IATEntryDetail {
-    const s = this.converters.stringField(rdfi, 9);
-    this.rdfiIdentification = this.converters.parseStringField(s.substring(0, 8));
-    this.checkDigit = this.converters.parseStringField(s.substring(8, 9));
+    const s = converters.stringField(rdfi, 9);
+    this.rdfiIdentification = converters.parseStringField(s.substring(0, 8));
+    this.checkDigit = converters.parseStringField(s.substring(8, 9));
     return this;
   }
 
   setTraceNumber(odfiIdentification: string, seq: number): void {
-    this.traceNumber = this.converters.stringField(odfiIdentification, 8) + this.converters.numericField(seq, 7);
+    this.traceNumber = converters.stringField(odfiIdentification, 8) + converters.numericField(seq, 7);
   }
 
   addendaCount(): number {
@@ -190,11 +193,11 @@ export class IATEntryDetail {
   }
 
   // Field formatting
-  rdfiIdentificationField(): string { return this.converters.stringField(this.rdfiIdentification, 8); }
-  addendaRecordsField(): string { return this.converters.numericField(this.addendaRecords, 4); }
-  amountField(): string { return this.converters.numericField(this.amount, 10); }
-  dfiAccountNumberField(): string { return this.converters.alphaField(this.dfiAccountNumber, 35); }
-  ofacScreeningIndicatorField(): string { return this.converters.alphaField(this.ofacScreeningIndicator, 1); }
-  secondaryOFACScreeningIndicatorField(): string { return this.converters.alphaField(this.secondaryOFACScreeningIndicator, 1); }
-  traceNumberField(): string { return this.converters.stringField(this.traceNumber, 15); }
+  rdfiIdentificationField(): string { return converters.stringField(this.rdfiIdentification, 8); }
+  addendaRecordsField(): string { return converters.numericField(this.addendaRecords, 4); }
+  amountField(): string { return converters.numericField(this.amount, 10); }
+  dfiAccountNumberField(): string { return converters.alphaField(this.dfiAccountNumber, 35); }
+  ofacScreeningIndicatorField(): string { return converters.alphaField(this.ofacScreeningIndicator, 1); }
+  secondaryOFACScreeningIndicatorField(): string { return converters.alphaField(this.secondaryOFACScreeningIndicator, 1); }
+  traceNumberField(): string { return converters.stringField(this.traceNumber, 15); }
 }

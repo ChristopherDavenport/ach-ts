@@ -90,6 +90,12 @@ export class BatchCOR extends Batch {
     }
     return null;
   }
+
+  static from(b: Batch): BatchCOR {
+    const inst = new BatchCOR();
+    Batch.copyFrom(b, inst);
+    return inst;
+  }
 }
 
-registerBatchType(COR, (b: Batch) => Object.setPrototypeOf(b, BatchCOR.prototype) as BatchCOR);
+registerBatchType(COR, (b: Batch) => BatchCOR.from(b));

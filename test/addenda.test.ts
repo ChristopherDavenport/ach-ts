@@ -1,9 +1,9 @@
 // Ported from moov-io/ach addenda tests
 import { describe, it, expect } from 'vitest';
-import { Addenda05, newAddenda05 } from '../src/addenda05';
-import { Addenda02, newAddenda02 } from '../src/addenda02';
-import { Addenda98, newAddenda98, lookupChangeCode, isRefusedChangeCode } from '../src/addenda98';
-import { Addenda99, newAddenda99, lookupReturnCode } from '../src/addenda99';
+import { Addenda05, newAddenda05 } from '../src/addenda/addenda05';
+import { Addenda02, newAddenda02 } from '../src/addenda/addenda02';
+import { Addenda98, newAddenda98, lookupChangeCode, isRefusedChangeCode } from '../src/addenda/addenda98';
+import { Addenda99, newAddenda99, lookupReturnCode } from '../src/addenda/addenda99';
 
 describe('Addenda05', () => {
   function mockAddenda05(): Addenda05 {

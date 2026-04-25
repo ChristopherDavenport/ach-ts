@@ -60,6 +60,12 @@ export class BatchENR extends Batch {
     if (err) return err;
     return this.validate();
   }
+
+  static from(b: Batch): BatchENR {
+    const inst = new BatchENR();
+    Batch.copyFrom(b, inst);
+    return inst;
+  }
 }
 
-registerBatchType(ENR, (b: Batch) => Object.setPrototypeOf(b, BatchENR.prototype) as BatchENR);
+registerBatchType(ENR, (b: Batch) => BatchENR.from(b));

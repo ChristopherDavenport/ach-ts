@@ -1,13 +1,13 @@
-import { entryAddendaPos } from './constants.js';
-import { enrichErrors, addenda16FieldPositions } from './fieldPositions.js';
-import type { ValidateOpts } from './validateOpts.js';
-import { Converters } from './utils/converters.js';
-import { Validators } from './utils/validators.js';
+import { entryAddendaPos } from '../constants.js';
+import { enrichErrors, enrichError, addenda16FieldPositions } from '../fieldPositions.js';
+import type { ValidateOpts } from '../validateOpts.js';
+import { Converters, converters } from '../utils/converters.js';
+import { Validators, validators } from '../utils/validators.js';
 import {
   fieldError,
   ErrConstructor,
   ErrAddendaTypeCode,
-} from './errors/index.js';
+} from '../errors/index.js';
 
 /**
  * Addenda16 is an IAT addenda record providing receiver city, state/province,
@@ -21,9 +21,6 @@ export class Addenda16 {
   receiverDateOfBirth = '';
   entryDetailSequenceNumber = 0;
   lineNumber = 0;
-
-  private converters = new Converters();
-  private validators = new Validators();
   validateOpts?: ValidateOpts;
 
   parse(record: string): void {
@@ -35,7 +32,7 @@ export class Addenda16 {
     this.receiverCountryPostalCode = runes.slice(38, 73).join('').trim();
     this.receiverDateOfBirth = runes.slice(73, 83).join('').trim();
     // 84-87 Reserved
-    this.entryDetailSequenceNumber = this.converters.parseNumField(runes.slice(87, 94).join(''));
+    this.entryDetailSequenceNumber = converters.parseNumField(runes.slice(87, 94).join(''));
   }
 
   setValidation(opts: ValidateOpts | undefined): void { this.validateOpts = opts; }
@@ -53,15 +50,21 @@ export class Addenda16 {
   }
 
   validate(): Error | null {
+    const err = this._validate();
+    if (err) enrichError(err, this.lineNumber, addenda16FieldPositions);
+    return err;
+  }
+
+  private _validate(): Error | null {
     const inclErr = this.fieldInclusion();
     if (inclErr) return inclErr;
 
     if (this.typeCode !== '16') return fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode);
 
     if (!this.validateOpts?.allowSpecialCharacters) {
-      const cspErr = this.validators.isAlphanumeric(this.receiverCityStateProvince);
+      const cspErr = validators.isAlphanumeric(this.receiverCityStateProvince);
       if (cspErr) return fieldError('ReceiverCityStateProvince', cspErr, this.receiverCityStateProvince);
-      const cpErr = this.validators.isAlphanumeric(this.receiverCountryPostalCode);
+      const cpErr = validators.isAlphanumeric(this.receiverCountryPostalCode);
       if (cpErr) return fieldError('ReceiverCountryPostalCode', cpErr, this.receiverCountryPostalCode);
     }
     return null;
@@ -79,8 +82,8 @@ export class Addenda16 {
 
     if (this.typeCode !== '16') push(fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode));
     if (!this.validateOpts?.allowSpecialCharacters) {
-      push(fieldError('ReceiverCityStateProvince', this.validators.isAlphanumeric(this.receiverCityStateProvince), this.receiverCityStateProvince));
-      push(fieldError('ReceiverCountryPostalCode', this.validators.isAlphanumeric(this.receiverCountryPostalCode), this.receiverCountryPostalCode));
+      push(fieldError('ReceiverCityStateProvince', validators.isAlphanumeric(this.receiverCityStateProvince), this.receiverCityStateProvince));
+      push(fieldError('ReceiverCountryPostalCode', validators.isAlphanumeric(this.receiverCountryPostalCode), this.receiverCountryPostalCode));
     }
 
     return enrichErrors(errors, this.lineNumber, addenda16FieldPositions);
@@ -94,10 +97,10 @@ export class Addenda16 {
     return null;
   }
 
-  receiverCityStateProvinceField(): string { return this.converters.alphaField(this.receiverCityStateProvince, 35); }
-  receiverCountryPostalCodeField(): string { return this.converters.alphaField(this.receiverCountryPostalCode, 35); }
-  receiverDateOfBirthField(): string { return this.converters.alphaField(this.receiverDateOfBirth, 10); }
-  entryDetailSequenceNumberField(): string { return this.converters.numericField(this.entryDetailSequenceNumber, 7); }
+  receiverCityStateProvinceField(): string { return converters.alphaField(this.receiverCityStateProvince, 35); }
+  receiverCountryPostalCodeField(): string { return converters.alphaField(this.receiverCountryPostalCode, 35); }
+  receiverDateOfBirthField(): string { return converters.alphaField(this.receiverDateOfBirth, 10); }
+  entryDetailSequenceNumberField(): string { return converters.numericField(this.entryDetailSequenceNumber, 7); }
 }
 
 export function newAddenda16(): Addenda16 { return new Addenda16(); }

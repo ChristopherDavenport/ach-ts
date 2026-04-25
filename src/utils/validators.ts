@@ -410,3 +410,6 @@ export function readRunes(start: number, length: number, input: string): string 
   const runes = [...input];
   return runes.slice(start, start + length).join('');
 }
+
+/** Shared singleton instance — Validators is stateless. */
+export const validators = new Validators();

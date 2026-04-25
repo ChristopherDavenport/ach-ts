@@ -1,6 +1,6 @@
 import { fileControlPos } from './constants.js';
-import { enrichErrors, fileControlFieldPositions } from './fieldPositions.js';
-import { Converters } from './utils/converters.js';
+import { enrichErrors, enrichError, fileControlFieldPositions } from './fieldPositions.js';
+import { Converters, converters } from './utils/converters.js';
 import { fieldError, ErrConstructor } from './errors/index.js';
 
 /**
@@ -25,9 +25,6 @@ export class FileControl {
   reserved = '';
   /** Line number at which the record appears */
   lineNumber = 0;
-
-  private converters = new Converters();
-
   static readonly NachaFileDebitCreditLimit = 9_999_999_999_99;
 
   /** Parse takes the input record string and parses the FileControl values */
@@ -37,17 +34,17 @@ export class FileControl {
 
     // 1-1 Always "9"
     // 2-7 BatchCount
-    this.batchCount = this.converters.parseNumField(runes.slice(1, 7).join(''));
+    this.batchCount = converters.parseNumField(runes.slice(1, 7).join(''));
     // 8-13 BlockCount
-    this.blockCount = this.converters.parseNumField(runes.slice(7, 13).join(''));
+    this.blockCount = converters.parseNumField(runes.slice(7, 13).join(''));
     // 14-21 EntryAddendaCount
-    this.entryAddendaCount = this.converters.parseNumField(runes.slice(13, 21).join(''));
+    this.entryAddendaCount = converters.parseNumField(runes.slice(13, 21).join(''));
     // 22-31 EntryHash
-    this.entryHash = this.converters.parseNumField(runes.slice(21, 31).join(''));
+    this.entryHash = converters.parseNumField(runes.slice(21, 31).join(''));
     // 32-43 TotalDebitEntryDollarAmountInFile
-    this.totalDebitEntryDollarAmountInFile = this.converters.parseNumField(runes.slice(31, 43).join(''));
+    this.totalDebitEntryDollarAmountInFile = converters.parseNumField(runes.slice(31, 43).join(''));
     // 44-55 TotalCreditEntryDollarAmountInFile
-    this.totalCreditEntryDollarAmountInFile = this.converters.parseNumField(runes.slice(43, 55).join(''));
+    this.totalCreditEntryDollarAmountInFile = converters.parseNumField(runes.slice(43, 55).join(''));
     // 56-94 Reserved
     this.reserved = runes.slice(55, 94).join('');
   }
@@ -68,6 +65,12 @@ export class FileControl {
 
   /** Validate performs NACHA format rule checks */
   validate(): Error | null {
+    const err = this._validate();
+    if (err) enrichError(err, this.lineNumber, fileControlFieldPositions);
+    return err;
+  }
+
+  private _validate(): Error | null {
     const inclErr = this.fieldInclusion();
     if (inclErr) return inclErr;
 
@@ -138,12 +141,12 @@ export class FileControl {
     return null;
   }
 
-  batchCountField(): string { return this.converters.numericField(this.batchCount, 6); }
-  blockCountField(): string { return this.converters.numericField(this.blockCount, 6); }
-  entryAddendaCountField(): string { return this.converters.numericField(this.entryAddendaCount, 8); }
-  entryHashField(): string { return this.converters.numericField(this.entryHash, 10); }
-  totalDebitEntryDollarAmountInFileField(): string { return this.converters.numericField(this.totalDebitEntryDollarAmountInFile, 12); }
-  totalCreditEntryDollarAmountInFileField(): string { return this.converters.numericField(this.totalCreditEntryDollarAmountInFile, 12); }
+  batchCountField(): string { return converters.numericField(this.batchCount, 6); }
+  blockCountField(): string { return converters.numericField(this.blockCount, 6); }
+  entryAddendaCountField(): string { return converters.numericField(this.entryAddendaCount, 8); }
+  entryHashField(): string { return converters.numericField(this.entryHash, 10); }
+  totalDebitEntryDollarAmountInFileField(): string { return converters.numericField(this.totalDebitEntryDollarAmountInFile, 12); }
+  totalCreditEntryDollarAmountInFileField(): string { return converters.numericField(this.totalCreditEntryDollarAmountInFile, 12); }
 }
 
 export function newFileControl(): FileControl {

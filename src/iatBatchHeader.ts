@@ -1,8 +1,8 @@
 import { batchHeaderPos } from './constants.js';
-import { enrichErrors, iatBatchHeaderFieldPositions } from './fieldPositions.js';
+import { enrichErrors, enrichError, iatBatchHeaderFieldPositions } from './fieldPositions.js';
 import type { ValidateOpts } from './validateOpts.js';
-import { Converters } from './utils/converters.js';
-import { Validators } from './utils/validators.js';
+import { Converters, converters } from './utils/converters.js';
+import { Validators, validators } from './utils/validators.js';
 import {
   fieldError,
   ErrFieldInclusion,
@@ -49,9 +49,6 @@ export class IATBatchHeader {
   odfiIdentification = '';
   batchNumber = 1;
   lineNumber = 0;
-
-  protected converters = new Converters();
-  protected validators = new Validators();
   validateOpts?: ValidateOpts;
 
   static newIATBatchHeader(): IATBatchHeader {
@@ -65,37 +62,37 @@ export class IATBatchHeader {
     if (record.length !== 94) return;
     // 1-1 Record Type "5"
     // 2-4 ServiceClassCode
-    this.serviceClassCode = this.converters.parseNumField(record.substring(1, 4));
+    this.serviceClassCode = converters.parseNumField(record.substring(1, 4));
     // 5-20 IATIndicator
-    this.iatIndicator = this.converters.parseStringField(record.substring(4, 20));
+    this.iatIndicator = converters.parseStringField(record.substring(4, 20));
     // 21-22 ForeignExchangeIndicator
-    this.foreignExchangeIndicator = this.converters.parseStringField(record.substring(20, 22));
+    this.foreignExchangeIndicator = converters.parseStringField(record.substring(20, 22));
     // 23-23 ForeignExchangeReferenceIndicator
-    this.foreignExchangeReferenceIndicator = this.converters.parseNumField(record.substring(22, 23));
+    this.foreignExchangeReferenceIndicator = converters.parseNumField(record.substring(22, 23));
     // 24-38 ForeignExchangeReference
-    this.foreignExchangeReference = this.converters.parseStringField(record.substring(23, 38));
+    this.foreignExchangeReference = converters.parseStringField(record.substring(23, 38));
     // 39-40 ISODestinationCountryCode
-    this.isoDestinationCountryCode = this.converters.parseStringField(record.substring(38, 40));
+    this.isoDestinationCountryCode = converters.parseStringField(record.substring(38, 40));
     // 41-50 OriginatorIdentification
-    this.originatorIdentification = this.converters.parseStringField(record.substring(40, 50));
+    this.originatorIdentification = converters.parseStringField(record.substring(40, 50));
     // 51-53 StandardEntryClassCode
     this.standardEntryClassCode = record.substring(50, 53);
     // 54-63 CompanyEntryDescription
     this.companyEntryDescription = record.substring(53, 63).trim();
     // 64-66 ISOOriginatingCurrencyCode
-    this.isoOriginatingCurrencyCode = this.converters.parseStringField(record.substring(63, 66));
+    this.isoOriginatingCurrencyCode = converters.parseStringField(record.substring(63, 66));
     // 67-69 ISODestinationCurrencyCode
-    this.isoDestinationCurrencyCode = this.converters.parseStringField(record.substring(66, 69));
+    this.isoDestinationCurrencyCode = converters.parseStringField(record.substring(66, 69));
     // 70-75 EffectiveEntryDate
-    this.effectiveEntryDate = this.validators.validateSimpleDate(record.substring(69, 75));
+    this.effectiveEntryDate = validators.validateSimpleDate(record.substring(69, 75));
     // 76-78 SettlementDate
-    this.settlementDate = this.validators.validateSettlementDate(record.substring(75, 78));
+    this.settlementDate = validators.validateSettlementDate(record.substring(75, 78));
     // 79-79 OriginatorStatusCode
-    this.originatorStatusCode = this.converters.parseNumField(record.substring(78, 79));
+    this.originatorStatusCode = converters.parseNumField(record.substring(78, 79));
     // 80-87 ODFIIdentification
-    this.odfiIdentification = this.converters.parseStringField(record.substring(79, 87));
+    this.odfiIdentification = converters.parseStringField(record.substring(79, 87));
     // 88-94 BatchNumber
-    this.batchNumber = this.converters.parseNumField(record.substring(87, 94));
+    this.batchNumber = converters.parseNumField(record.substring(87, 94));
   }
 
   string(): string {
@@ -124,11 +121,17 @@ export class IATBatchHeader {
   }
 
   validate(): Error | null {
+    const err = this._validate();
+    if (err) enrichError(err, this.lineNumber, iatBatchHeaderFieldPositions);
+    return err;
+  }
+
+  private _validate(): Error | null {
     const fiErr = this.fieldInclusion();
     if (fiErr) return fiErr;
 
-    if (this.validators.isServiceClass(this.serviceClassCode)) {
-      return fieldError('ServiceClassCode', this.validators.isServiceClass(this.serviceClassCode)!, String(this.serviceClassCode));
+    if (validators.isServiceClass(this.serviceClassCode)) {
+      return fieldError('ServiceClassCode', validators.isServiceClass(this.serviceClassCode)!, String(this.serviceClassCode));
     }
     if (this.isForeignExchangeIndicator()) {
       return fieldError('ForeignExchangeIndicator', this.isForeignExchangeIndicator()!, this.foreignExchangeIndicator);
@@ -139,12 +142,12 @@ export class IATBatchHeader {
     if (!isValidISO3166(this.isoDestinationCountryCode)) {
       return fieldError('ISODestinationCountryCode', ErrValidISO3166, this.isoDestinationCountryCode);
     }
-    if (this.validators.isSECCode(this.standardEntryClassCode)) {
-      return fieldError('StandardEntryClassCode', this.validators.isSECCode(this.standardEntryClassCode)!, this.standardEntryClassCode);
+    if (validators.isSECCode(this.standardEntryClassCode)) {
+      return fieldError('StandardEntryClassCode', validators.isSECCode(this.standardEntryClassCode)!, this.standardEntryClassCode);
     }
     if (!this.validateOpts?.allowSpecialCharacters) {
-      if (this.validators.isAlphanumeric(this.companyEntryDescription)) {
-        return fieldError('CompanyEntryDescription', this.validators.isAlphanumeric(this.companyEntryDescription)!, this.companyEntryDescription);
+      if (validators.isAlphanumeric(this.companyEntryDescription)) {
+        return fieldError('CompanyEntryDescription', validators.isAlphanumeric(this.companyEntryDescription)!, this.companyEntryDescription);
       }
     }
     if (!isValidISO4217(this.isoOriginatingCurrencyCode)) {
@@ -153,8 +156,8 @@ export class IATBatchHeader {
     if (!isValidISO4217(this.isoDestinationCurrencyCode)) {
       return fieldError('ISODestinationCurrencyCode', ErrValidISO4217, this.isoDestinationCurrencyCode);
     }
-    if (this.validators.isOriginatorStatusCode(this.originatorStatusCode)) {
-      return fieldError('OriginatorStatusCode', this.validators.isOriginatorStatusCode(this.originatorStatusCode)!, String(this.originatorStatusCode));
+    if (validators.isOriginatorStatusCode(this.originatorStatusCode)) {
+      return fieldError('OriginatorStatusCode', validators.isOriginatorStatusCode(this.originatorStatusCode)!, String(this.originatorStatusCode));
     }
     return null;
   }
@@ -178,17 +181,17 @@ export class IATBatchHeader {
     if (this.isoDestinationCurrencyCode === '') push(fieldError('ISODestinationCurrencyCode', ErrFieldInclusion, this.isoDestinationCurrencyCode));
     if (this.odfiIdentification === '') push(fieldError('ODFIIdentification', ErrFieldInclusion, this.odfiIdentificationField()));
 
-    push(fieldError('ServiceClassCode', this.validators.isServiceClass(this.serviceClassCode), String(this.serviceClassCode)));
+    push(fieldError('ServiceClassCode', validators.isServiceClass(this.serviceClassCode), String(this.serviceClassCode)));
     push(fieldError('ForeignExchangeIndicator', this.isForeignExchangeIndicator(), this.foreignExchangeIndicator));
     push(fieldError('ForeignExchangeReferenceIndicator', this.isForeignExchangeReferenceIndicator(), String(this.foreignExchangeReferenceIndicator)));
     if (!isValidISO3166(this.isoDestinationCountryCode)) push(fieldError('ISODestinationCountryCode', ErrValidISO3166, this.isoDestinationCountryCode));
-    push(fieldError('StandardEntryClassCode', this.validators.isSECCode(this.standardEntryClassCode), this.standardEntryClassCode));
+    push(fieldError('StandardEntryClassCode', validators.isSECCode(this.standardEntryClassCode), this.standardEntryClassCode));
     if (!this.validateOpts?.allowSpecialCharacters) {
-      push(fieldError('CompanyEntryDescription', this.validators.isAlphanumeric(this.companyEntryDescription), this.companyEntryDescription));
+      push(fieldError('CompanyEntryDescription', validators.isAlphanumeric(this.companyEntryDescription), this.companyEntryDescription));
     }
     if (!isValidISO4217(this.isoOriginatingCurrencyCode)) push(fieldError('ISOOriginatingCurrencyCode', ErrValidISO4217, this.isoOriginatingCurrencyCode));
     if (!isValidISO4217(this.isoDestinationCurrencyCode)) push(fieldError('ISODestinationCurrencyCode', ErrValidISO4217, this.isoDestinationCurrencyCode));
-    push(fieldError('OriginatorStatusCode', this.validators.isOriginatorStatusCode(this.originatorStatusCode), String(this.originatorStatusCode)));
+    push(fieldError('OriginatorStatusCode', validators.isOriginatorStatusCode(this.originatorStatusCode), String(this.originatorStatusCode)));
 
     return enrichErrors(errors, this.lineNumber, iatBatchHeaderFieldPositions);
   }
@@ -247,22 +250,22 @@ export class IATBatchHeader {
   }
 
   // Field formatting methods
-  iatIndicatorField(): string { return this.converters.alphaField(this.iatIndicator, 16); }
-  foreignExchangeIndicatorField(): string { return this.converters.alphaField(this.foreignExchangeIndicator, 2); }
-  foreignExchangeReferenceIndicatorField(): string { return this.converters.numericField(this.foreignExchangeReferenceIndicator, 1); }
+  iatIndicatorField(): string { return converters.alphaField(this.iatIndicator, 16); }
+  foreignExchangeIndicatorField(): string { return converters.alphaField(this.foreignExchangeIndicator, 2); }
+  foreignExchangeReferenceIndicatorField(): string { return converters.numericField(this.foreignExchangeReferenceIndicator, 1); }
   foreignExchangeReferenceField(): string {
     if (this.foreignExchangeReferenceIndicator === 3) return '               ';
-    return this.converters.alphaField(this.foreignExchangeReference, 15);
+    return converters.alphaField(this.foreignExchangeReference, 15);
   }
-  isoDestinationCountryCodeField(): string { return this.converters.alphaField(this.isoDestinationCountryCode, 2); }
-  originatorIdentificationField(): string { return this.converters.alphaField(this.originatorIdentification, 10); }
-  companyEntryDescriptionField(): string { return this.converters.alphaField(this.companyEntryDescription, 10); }
-  isoOriginatingCurrencyCodeField(): string { return this.converters.alphaField(this.isoOriginatingCurrencyCode, 3); }
-  isoDestinationCurrencyCodeField(): string { return this.converters.alphaField(this.isoDestinationCurrencyCode, 3); }
-  effectiveEntryDateField(): string { return this.converters.stringField(this.effectiveEntryDate, 6); }
-  odfiIdentificationField(): string { return this.converters.stringField(this.odfiIdentification, 8); }
-  batchNumberField(): string { return this.converters.numericField(this.batchNumber, 7); }
-  settlementDateField(): string { return this.converters.alphaField(this.settlementDate, 3); }
+  isoDestinationCountryCodeField(): string { return converters.alphaField(this.isoDestinationCountryCode, 2); }
+  originatorIdentificationField(): string { return converters.alphaField(this.originatorIdentification, 10); }
+  companyEntryDescriptionField(): string { return converters.alphaField(this.companyEntryDescription, 10); }
+  isoOriginatingCurrencyCodeField(): string { return converters.alphaField(this.isoOriginatingCurrencyCode, 3); }
+  isoDestinationCurrencyCodeField(): string { return converters.alphaField(this.isoDestinationCurrencyCode, 3); }
+  effectiveEntryDateField(): string { return converters.stringField(this.effectiveEntryDate, 6); }
+  odfiIdentificationField(): string { return converters.stringField(this.odfiIdentification, 8); }
+  batchNumberField(): string { return converters.numericField(this.batchNumber, 7); }
+  settlementDateField(): string { return converters.alphaField(this.settlementDate, 3); }
 
   equal(other: IATBatchHeader | null): boolean {
     if (!other) return false;

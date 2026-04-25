@@ -59,6 +59,12 @@ export class BatchPOP extends Batch {
     if (err) return err;
     return this.validate();
   }
+
+  static from(b: Batch): BatchPOP {
+    const inst = new BatchPOP();
+    Batch.copyFrom(b, inst);
+    return inst;
+  }
 }
 
-registerBatchType(POP, (b: Batch) => Object.setPrototypeOf(b, BatchPOP.prototype) as BatchPOP);
+registerBatchType(POP, (b: Batch) => BatchPOP.from(b));

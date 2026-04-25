@@ -3,6 +3,8 @@ import type { InvalidEntry } from '../batch.js';
 import { SHR, MixedDebitsAndCredits, CreditsOnly, DebitsOnly, CategoryForward } from '../constants.js';
 import { ErrBatchSECType, ErrBatchServiceClassCode, ErrBatchTransactionCode, ErrBatchInvalidCardTransactionType, ErrValidMonth, ErrValidYear, ErrValidState, fieldError } from '../errors/index.js';
 import { usStateValid } from '../utils/validators.js';
+import { converters } from '../utils/converters.js';
+import { validators } from '../utils/validators.js';
 
 export class BatchSHR extends Batch {
   validate(): Error | null {
@@ -44,17 +46,17 @@ export class BatchSHR extends Batch {
       if (cd !== 'C' && cd !== 'D') {
         out.push({ entry, error: this.batchError('TransactionCode', ErrBatchTransactionCode, entry.transactionCode) });
       }
-      if (this.validators.isCardTransactionType(entry.discretionaryData)) {
+      if (validators.isCardTransactionType(entry.discretionaryData)) {
         out.push({ entry, error: this.batchError('CardTransactionType', ErrBatchInvalidCardTransactionType, entry.discretionaryData) });
       }
       // CardExpirationDate MMYY
       const expDate = entry.shrCardExpirationDateField();
-      const month = this.converters.parseStringField(expDate.substring(0, 2));
-      const year = this.converters.parseStringField(expDate.substring(2, 4));
-      if (this.validators.isMonth(month)) {
+      const month = converters.parseStringField(expDate.substring(0, 2));
+      const year = converters.parseStringField(expDate.substring(2, 4));
+      if (validators.isMonth(month)) {
         out.push({ entry, error: fieldError('CardExpirationDate', ErrValidMonth, month)! });
       }
-      if (this.validators.isCreditCardYear(year)) {
+      if (validators.isCreditCardYear(year)) {
         out.push({ entry, error: fieldError('CardExpirationDate', ErrValidYear, year)! });
       }
       let err = this.validAmountForCodes(entry);
@@ -77,6 +79,12 @@ export class BatchSHR extends Batch {
     if (err) return err;
     return this.validate();
   }
+
+  static from(b: Batch): BatchSHR {
+    const inst = new BatchSHR();
+    Batch.copyFrom(b, inst);
+    return inst;
+  }
 }
 
-registerBatchType(SHR, (b: Batch) => Object.setPrototypeOf(b, BatchSHR.prototype) as BatchSHR);
+registerBatchType(SHR, (b: Batch) => BatchSHR.from(b));

@@ -1,407 +1,533 @@
-# Port moov-io/ach Go Library to TypeScript
+# ach-ts
 
-## Background
+A TypeScript library for creating, parsing, validating, and writing ACH (Automated Clearing House) files conforming to NACHA specifications. Ported from the [moov-io/ach](https://github.com/moov-io/ach) Go library with additional TypeScript-specific features.
 
-The moov-io/ach library is a comprehensive Go library for creating, parsing, validating, and writing ACH (Automated Clearing House) files conforming to NACHA specifications. The library contains **~53K lines** of Go source code and **~33K lines** of tests across 75+ source files.
+## Installation
 
-### Key Features to Port
-- **File parsing** (fixed-width NACHA format → structured objects)
-- **File writing** (structured objects → fixed-width NACHA format)
-- **JSON serialization/deserialization** of ACH files
-- **Full NACHA validation** with configurable rules (`ValidateOpts`)
-- **23 SEC (Standard Entry Class) batch types**: ACK, ADV, ARC, ATX, BOC, CCD, CIE, COR, CTX, DNE, ENR, IAT, MTE, POP, POS, PPD, RCK, SHR, TEL, TRC, TRX, WEB, XCK  
-- **17 Addenda record types**: 02, 05, 10–18, 98, 98Refused, 99, 99Dishonored, 99Contested
-- **File merging**, **file flattening**, **reversal generation**, **segment file configuration**, and **iteration**
-
-## User Review Required
-
-> [!IMPORTANT]
-> This is a **massive undertaking** — approximately 85K+ lines of Go code (source + tests) to port. I propose implementing this in **8 phased milestones** so we can verify correctness incrementally. Each phase builds on the previous one.
-
-> [!WARNING]
-> Some Go idioms don't translate directly to TypeScript:
-> - Go's **interface embedding** (validator, converters) → TypeScript **mixins or composition**
-> - Go's **Batcher interface** with 23 implementations → TypeScript **abstract class + concrete subclasses**
-> - Go's **sync.Pool** (buffer reuse in `perf.go`) → Not needed in JS (GC handles it)
-> - Go's **io.Reader/io.Writer** → Node.js **streams** or **string-based** I/O
-> - Go's **error handling** (returned errors) → TypeScript **custom Error classes**
-
-## Proposed Changes
-
-The TypeScript library will be organized as a Node.js package with the following structure:
-
-```
-/home/chris/coding/js/ach-ts/
-├── src/
-│   ├── index.ts                    # Public exports
-│   ├── constants.ts                # Record positions, lengths, SEC codes, transaction codes
-│   ├── errors/
-│   │   ├── ACHError.ts             # Base error class
-│   │   ├── FieldError.ts           # Field-level validation error
-│   │   ├── BatchError.ts           # Batch-level validation error
-│   │   ├── FileError.ts            # File-level errors
-│   │   └── index.ts
-│   ├── utils/
-│   │   ├── converters.ts           # String/numeric field formatting
-│   │   ├── validators.ts           # Validation functions
-│   │   └── index.ts
-│   ├── validateOpts.ts             # ValidateOpts interface
-│   ├── fileHeader.ts               # FileHeader record
-│   ├── fileControl.ts              # FileControl record
-│   ├── batchHeader.ts              # BatchHeader record
-│   ├── batchControl.ts             # BatchControl record
-│   ├── entryDetail.ts              # EntryDetail record
-│   ├── addenda/
-│   │   ├── Addenda02.ts
-│   │   ├── Addenda05.ts
-│   │   ├── Addenda10.ts through Addenda18.ts
-│   │   ├── Addenda98.ts
-│   │   ├── Addenda98Refused.ts
-│   │   ├── Addenda99.ts
-│   │   ├── Addenda99Dishonored.ts
-│   │   ├── Addenda99Contested.ts
-│   │   └── index.ts
-│   ├── advEntryDetail.ts           # ADV Entry Detail
-│   ├── advBatchControl.ts          # ADV Batch Control
-│   ├── advFileControl.ts           # ADV File Control
-│   ├── batch.ts                    # Base Batch class + Batcher interface
-│   ├── batches/
-│   │   ├── BatchACK.ts through BatchXCK.ts (23 files)
-│   │   └── index.ts
-│   ├── iatBatchHeader.ts           # IAT Batch Header
-│   ├── iatEntryDetail.ts           # IAT Entry Detail
-│   ├── iatBatch.ts                 # IAT Batch
-│   ├── file.ts                     # Main File class
-│   ├── reader.ts                   # ACH file reader/parser
-│   ├── writer.ts                   # ACH file writer
-│   ├── merge.ts                    # File merging
-│   ├── fileFlattener.ts            # File flattener
-│   ├── reversal.ts                 # Reversal generation
-│   ├── iterator.ts                 # File/batch iterators
-│   └── segmentFileConfiguration.ts # Segment configuration
-├── test/
-│   ├── testdata/                   # Copied from Go project
-│   ├── converters.test.ts
-│   ├── validators.test.ts
-│   ├── fileHeader.test.ts
-│   ├── fileControl.test.ts
-│   ├── batchHeader.test.ts
-│   ├── batchControl.test.ts
-│   ├── entryDetail.test.ts
-│   ├── addenda02.test.ts through addenda99Contested.test.ts
-│   ├── batch.test.ts
-│   ├── batchPPD.test.ts through batchXCK.test.ts (23 files)
-│   ├── iatBatch.test.ts
-│   ├── file.test.ts
-│   ├── reader.test.ts
-│   ├── writer.test.ts
-│   ├── merge.test.ts
-│   ├── fileFlattener.test.ts
-│   ├── reversal.test.ts
-│   └── iterator.test.ts
-├── package.json
-├── tsconfig.json
-└── vitest.config.ts
+```bash
+npm install ach-ts
 ```
 
----
+Requires Node.js 18+ and TypeScript 5.0+.
 
-### Phase 1: Foundation (Project Setup + Core Utilities)
+## Features
 
-#### [NEW] package.json, tsconfig.json, vitest.config.ts
-- Initialize TypeScript project with Vitest for testing
-- Configure ES modules, strict mode, path aliases
+- Parse and write NACHA fixed-width ACH files (94-character records)
+- JSON serialization and deserialization with Go-compatible key mapping
+- Full NACHA validation with 23 configurable bypass flags (`ValidateOpts`)
+- All 23 Standard Entry Class (SEC) batch types
+- All 17 addenda record types (02, 05, 10--18, 98, 98Refused, 99, 99Dishonored, 99Contested)
+- International ACH Transactions (IAT) with dedicated batch, header, and entry types
+- Automated Accounting Advices (ADV) records
+- File merging with line count and dollar amount limits
+- File segmentation (split by credit/debit)
+- Batch flattening (merge compatible batches)
+- Reversal generation (swap debit/credit transaction codes)
+- Memory-efficient streaming iteration over entries
+- Directory scanning and batch processing
+- TXP (tax payment) format parsing
+- Two-tier validation: fast-fail (`validate()`) and exhaustive (`validateAll()`)
+- Structured errors with line numbers, column positions, and stable error codes for LSP/IDE integration
+## Quick Start
 
-#### [NEW] src/constants.ts
-- Port record position constants (`fileHeaderPos="1"`, etc.)
-- Port `RecordLength = 94`
-- Port all SEC codes (ACK, ADV, ARC, ... XCK)
-- Port all TransactionCode constants (CheckingCredit=22, etc.)
-- Port ServiceClassCode constants (200, 220, 225, 280)
-- Port Category constants (Forward, Return, NOC, etc.)
+### Parse an ACH file
 
-#### [NEW] src/errors/
-- Port `FieldError`, `BatchError`, `FileError` as TypeScript Error subclasses
-- Port all sentinel errors (`ErrNonAlphanumeric`, `ErrConstructor`, etc.)
-- Port structured error types (`ErrValidCheckDigit`, `ErrBatchHeaderControlEquality`, etc.)
+```typescript
+import { Reader } from 'ach-ts';
+import { readFileSync } from 'fs';
 
-#### [NEW] src/utils/converters.ts
-- Port `parseNumField`, `parseStringField`, `parseStringFieldWithOpts`
-- Port `alphaField`, `numericField`, `stringField`
-- Port `formatSimpleDate`, `formatSimpleTime`
-- Port `leastSignificantDigits`
+const contents = readFileSync('input.ach', 'utf-8');
+const reader = new Reader(contents);
+const file = reader.read();
 
-#### [NEW] src/utils/validators.ts
-- Port `isAlphanumeric`, `isUpperASCII`, `isNonZero`
-- Port `isServiceClass`, `isSECCode`, `isTransactionCode`, `isOriginatorStatusCode`
-- Port `isTypeCode`, `isCardTransactionType`, `isTransactionTypeCode`
-- Port `CalculateCheckDigit`, `CheckRoutingNumber`
-- Port `validateSimpleDate`, `validateSimpleTime`, `validateSettlementDate`
-- Port date validation helpers (`isMonth`, `isDay`, `isCreditCardYear`)
+console.log(file.header.immediateDestinationName);
+for (const batch of file.batches) {
+  for (const entry of batch.getEntries()) {
+    console.log(entry.individualName, entry.amount);
+  }
+}
+```
 
-#### [NEW] src/validateOpts.ts
-- Port `ValidateOpts` interface with all 23 boolean fields + `CheckTransactionCode` callback
-- Port `merge()` method
+### Create an ACH file programmatically
 
-#### Tests for Phase 1
-- Port `converters_test.go` → `converters.test.ts`
-- Port `validators_test.go` → `validators.test.ts`
+```typescript
+import {
+  newFile, newFileHeader, newBatchHeader, newEntryDetail, newBatch,
+  Writer, PPD, CheckingCredit,
+} from 'ach-ts';
 
----
+const fh = newFileHeader();
+fh.immediateDestination = '231380104';
+fh.immediateOrigin = '121042882';
+fh.fileCreationDate = '190614';
+fh.immediateDestinationName = 'Citadel';
+fh.immediateOriginName = 'Wells Fargo';
 
-### Phase 2: Record Types (Headers, Controls, Entry Details)
+const bh = newBatchHeader();
+bh.serviceClassCode = 200;
+bh.companyName = 'Your Company';
+bh.companyIdentification = '121042882';
+bh.standardEntryClassCode = PPD;
+bh.companyEntryDescription = 'Payroll';
+bh.effectiveEntryDate = '190614';
+bh.odfiIdentification = '12104288';
 
-#### [NEW] src/fileHeader.ts
-- Port `FileHeader` class with `Parse()`, `String()`, `Validate()`, `ValidateWith()`
-- Port all field methods (`ImmediateDestinationField`, etc.)
+const entry = newEntryDetail();
+entry.transactionCode = CheckingCredit;
+entry.rdfiIdentification = '23138010';
+entry.checkDigit = '4';
+entry.dfiAccountNumber = '81967038518';
+entry.amount = 100000; // $1,000.00 in cents
+entry.individualName = 'John Doe';
+entry.traceNumber = '121042880000001';
 
-#### [NEW] src/fileControl.ts
-- Port `FileControl` class with `Parse()`, `String()`, `Validate()`
-- Port all field methods
+const batch = newBatch(bh);
+batch.addEntry(entry);
 
-#### [NEW] src/batchHeader.ts 
-- Port `BatchHeader` class with `Parse()`, `String()`, `Validate()`, `Equal()`
-- Port all field methods
+const file = newFile();
+file.setHeader(fh);
+file.addBatch(batch);
+file.create();
 
-#### [NEW] src/batchControl.ts
-- Port `BatchControl` class with `Parse()`, `String()`, `Validate()`
-- Port all field methods
+const writer = new Writer();
+const output = writer.write(file);
+```
 
-#### [NEW] src/entryDetail.ts
-- Port `EntryDetail` class with `Parse()`, `String()`, `Validate()`
-- Port all SEC-specific field methods (POP, SHR, CTX, TRC, etc.)
-- Port `SetTraceNumber`, `SetRDFI`, `CreditOrDebit`, `AddAddenda05`
+### Write to string
 
-#### [NEW] src/advEntryDetail.ts, src/advBatchControl.ts, src/advFileControl.ts
-- Port ADV-specific record types
+```typescript
+import { Writer } from 'ach-ts';
 
-#### Tests for Phase 2
-- Port `fileHeader_test.go`, `fileControl_test.go`
-- Port `batchHeader_test.go`, `batchControl_test.go`
-- Port `entryDetail_test.go`
-- Port `advEntryDetail_test.go`, `advBatchControl_test.go`, `advFileControl_test.go`
+const writer = new Writer({ lineEnding: '\r\n' }); // CRLF for Windows
+const achString = writer.write(file);
+```
 
----
+### JSON round-trip
 
-### Phase 3: Addenda Records
+```typescript
+import { fileFromJSON } from 'ach-ts';
 
-#### [NEW] src/addenda/Addenda02.ts through Addenda99Contested.ts
-- Port all 17 addenda record types with `Parse()`, `String()`, `Validate()`
-- Port change code tables (Addenda98), return code tables (Addenda99)
-- Port dishonored/contested return code helpers
+// Parse JSON (accepts Go-style PascalCase or TypeScript camelCase keys)
+const file = fileFromJSON(jsonString);
 
-#### Tests for Phase 3
-- Port all addenda test files (`addenda02_test.go` → `addenda02.test.ts`, etc.)
+// Serialize back to JSON
+const json = JSON.stringify(file.toJSON(), null, 2);
+```
 
----
+### Merge files
 
-### Phase 4: Batch System
+```typescript
+import { mergeFiles, mergeFilesWith } from 'ach-ts';
 
-#### [NEW] src/batch.ts
-- Port base `Batch` class with `build()`, `verify()`, `ValidateTotals()`
-- Define `Batcher` TypeScript interface
-- Port `calculateEntryHash`, `calculateBatchAmounts`, `isSequenceAscending`, etc.
-- Port `Offset` type and offset handling
-- Port `ConvertBatchType` and `NewBatch` factory
+// Merge with default 10,000-line NACHA limit
+const [merged, err] = mergeFiles(files);
 
-#### [NEW] src/batches/BatchACK.ts through BatchXCK.ts
-- Port all 23 SEC-specific batch implementations
-- Each has custom `Create()` and `Validate()` methods
+// Merge with custom limits
+const [merged2, err2] = mergeFilesWith(files, {
+  maxLines: 5000,
+  maxDollarAmount: 1_000_000_00, // $1M in cents
+});
+```
 
-#### [NEW] src/iatBatchHeader.ts, src/iatEntryDetail.ts, src/iatBatch.ts
-- Port IAT-specific records and batch type
+### Validate with custom options
 
-#### Tests for Phase 4
-- Port `batch_test.go` (largest test file ~56K chars)
-- Port `batchACK_test.go` through `batchXCK_test.go` (23 files)
-- Port `iatBatch_test.go`, `iatBatchHeader_test.go`, `iatEntryDetail_test.go`
+```typescript
+import { Reader } from 'ach-ts';
+import type { ValidateOpts } from 'ach-ts';
 
----
+const opts: ValidateOpts = {
+  allowZeroBatches: true,
+  customTraceNumbers: true,
+  bypassCompanyIdentificationMatch: true,
+};
 
-### Phase 5: File Operations (Create, Validate, JSON)
+const reader = new Reader(contents);
+reader.setValidation(opts);
+const file = reader.read();
 
-#### [NEW] src/file.ts
-- Port `File` class with `Create()`, `Validate()`, `ValidateWith()`, `ValidateTotals()`
-- Port `FileFromJSON()`, `FileFromJSONWith()`
-- Port JSON serialization (`MarshalJSON`/`UnmarshalJSON` → `toJSON`/`fromJSON`)
-- Port `overwriteDateTimeFields`, `annotateLineNumbers`
-- Port `AddBatch`, `AddIATBatch`, `RemoveBatch`, helper methods
+// Fast-fail: returns the first error found
+const err = file.validate();
 
-#### Tests for Phase 5
-- Port `file_test.go` (~70K chars, largest test file)
+// Exhaustive: returns all validation errors
+const allErrors = file.validateAll();
+```
 
----
+### Iterate entries (memory-efficient)
 
-### Phase 6: Reader & Writer
+```typescript
+import { Iterator } from 'ach-ts';
 
-#### [NEW] src/reader.ts
-- Port `Reader` class with rune-by-rune scanning
-- Port `Read()`, `parseLine()`, `parseFileHeader()`, `parseBatchHeader()`, etc.
-- Port fixed-width file handling, line padding, blank line detection
-- Adapt from Go's `io.Reader` to string-based input
+const iter = new Iterator(achContents);
+while (true) {
+  const [batchHeader, entry, err] = iter.nextEntry();
+  if (err) break;
+  if (!entry) break;
+  console.log(entry.individualName, entry.amount);
+}
+```
 
-#### [NEW] src/writer.ts
-- Port `Writer` class with configurable line endings
-- Port `Write()`, `writeBatch()`, `writeIATBatch()`, padding logic
-- Adapt from Go's `io.Writer` to string-based output
+### Read a directory of ACH files
 
-#### Tests for Phase 6
-- Port `reader_test.go` (~66K chars)
-- Port `writer_test.go` (~20K chars)
-- Port `encoding_test.go`, `record_test.go`
+```typescript
+import { readDir, mergeDir } from 'ach-ts';
 
----
+const [files, err] = await readDir('/path/to/ach/files');
+const [merged, mergeErr] = await mergeDir('/path/to/ach/files');
+```
 
-### Phase 7: Advanced Features
+## Architecture
 
-#### [NEW] src/merge.ts
-- Port file merging logic with conditions and limits
+### Record Hierarchy
 
-#### [NEW] src/fileFlattener.ts
-- Port file flattening logic
+An ACH file is a sequence of 94-character fixed-width records. The library models each record type as a class with `parse()`, `string()`, and `validate()` methods.
 
-#### [NEW] src/reversal.ts
-- Port reversal generation
+```
+File
+  FileHeader          (record type "1")
+  Batch[]
+    BatchHeader       (record type "5")
+    EntryDetail[]     (record type "6")
+      Addenda[]       (record type "7")
+    BatchControl      (record type "8")
+  FileControl         (record type "9")
+```
 
-#### [NEW] src/iterator.ts
-- Port file/batch iterator
+The `File` class holds an array of `Batcher` instances (regular batches) and an array of `IATBatch` instances (international batches). Each batch contains entry details and their associated addenda records.
 
-#### [NEW] src/segmentFileConfiguration.ts
-- Port segment file configuration
+### Batch Type System
 
-#### Tests for Phase 7
-- Port `merge_test.go`, `file_flattener_test.go`, `reversal_test.go`
-- Port `iterator_test.go`, `segmentFileConfiguration_test.go`
+Every SEC code has a corresponding batch class that enforces type-specific validation rules. Batch types are registered at import time via a runtime registry:
 
----
+```typescript
+import { newBatch, convertBatchType, registerBatchType } from 'ach-ts';
 
-### Phase 8: Test Data & Integration
+// newBatch() creates the correct batch subclass based on the SEC code in the header
+const batch = newBatch(batchHeader); // Returns BatchPPD, BatchCCD, etc.
 
-- Copy all test fixture files from `moov-ach/test/testdata/` and `moov-ach/test/*/` 
-- Ensure all integration-level tests pass with real ACH file fixtures
-- Verify round-trip: parse → create → write → parse produces identical files
+// convertBatchType() converts an existing batch to a different SEC type
+const converted = convertBatchType(batch, 'CCD');
+```
 
----
+The 23 supported SEC codes and their batch classes are:
+
+| SEC Code | Description | Class |
+|----------|-------------|-------|
+| ACK | Acknowledgment | `BatchACK` |
+| ADV | Automated Accounting Advice | `BatchADV` |
+| ARC | Accounts Receivable Check | `BatchARC` |
+| ATX | Acknowledgment (Tax) | `BatchATX` |
+| BOC | Back Office Conversion | `BatchBOC` |
+| CCD | Corporate Credit or Debit | `BatchCCD` |
+| CIE | Customer Initiated Entry | `BatchCIE` |
+| COR | Notification of Change | `BatchCOR` |
+| CTX | Corporate Trade Exchange | `BatchCTX` |
+| DNE | Death Notification Entry | `BatchDNE` |
+| ENR | Automated Enrollment Entry | `BatchENR` |
+| IAT | International ACH Transaction | `IATBatch` |
+| MTE | Machine Transfer Entry | `BatchMTE` |
+| POP | Point of Purchase | `BatchPOP` |
+| POS | Point of Sale | `BatchPOS` |
+| PPD | Prearranged Payment and Deposit | `BatchPPD` |
+| RCK | Re-presented Check | `BatchRCK` |
+| SHR | Shared Network Transaction | `BatchSHR` |
+| TEL | Telephone-Initiated Entry | `BatchTEL` |
+| TRC | Truncated Check Entry | `BatchTRC` |
+| TRX | Check Truncation Exchange | `BatchTRX` |
+| WEB | Internet-Initiated Entry | `BatchWEB` |
+| XCK | Destroyed Check Entry | `BatchXCK` |
+
+### Addenda Records
+
+| Type Code | Class | Purpose |
+|-----------|-------|---------|
+| 02 | `Addenda02` | POS/SHR/MTE terminal information |
+| 05 | `Addenda05` | General-purpose payment information |
+| 10 | `Addenda10` | IAT transaction type and foreign payment |
+| 11 | `Addenda11` | IAT originator name and address |
+| 12 | `Addenda12` | IAT originator city/state/country |
+| 13 | `Addenda13` | IAT ODFI information |
+| 14 | `Addenda14` | IAT RDFI information |
+| 15 | `Addenda15` | IAT receiver identification |
+| 16 | `Addenda16` | IAT receiver address |
+| 17 | `Addenda17` | IAT remittance information (max 2 per entry) |
+| 18 | `Addenda18` | IAT foreign correspondent bank (max 5 per entry) |
+| 98 | `Addenda98` | Notification of Change (19 change codes) |
+| 98 (refused) | `Addenda98Refused` | Refused Notification of Change |
+| 99 | `Addenda99` | Return (54 return codes) |
+| 99 (dishonored) | `Addenda99Dishonored` | Dishonored return (R61, R62, R67--R70) |
+| 99 (contested) | `Addenda99Contested` | Contested return (R71--R77) |
+
+### IAT (International ACH Transactions)
+
+International entries use dedicated types that carry additional fields for foreign exchange, country codes (ISO 3166), and currency codes (ISO 4217):
+
+- `IATBatchHeader` -- batch header with foreign exchange indicator and reference fields
+- `IATEntryDetail` -- entry detail with Addenda10--18 slots
+- `IATBatch` -- batch container with IAT-specific validation
+
+### ADV (Automated Accounting Advices)
+
+ADV entries use separate record types with different field layouts, including 20-digit dollar amount fields and accounting transaction codes (81--88):
+
+- `ADVEntryDetail`
+- `ADVBatchControl`
+- `ADVFileControl`
+
+## API Reference
+
+### File Operations
+
+| Export | Description |
+|--------|-------------|
+| `File` | Main file class: `create()`, `validate()`, `validateAll()`, `toJSON()`, `reversal()`, `segmentFile()`, `flattenBatches()` |
+| `newFile()` | Create a new empty File |
+| `fileFromJSON(json)` | Parse a JSON string into a File |
+| `fileFromJSONWith(json, opts)` | Parse JSON with custom ValidateOpts |
+| `Reader` | Parse NACHA fixed-width text into a File |
+| `Writer` | Serialize a File to NACHA fixed-width text |
+| `writeFile(file)` | Convenience function to write a File to string |
+
+### Merging and Processing
+
+| Export | Description |
+|--------|-------------|
+| `mergeFiles(files)` | Merge files with default 10,000-line limit |
+| `mergeFilesWith(files, conditions)` | Merge with custom line/dollar limits |
+| `newMerger(opts)` | Create a Merger with custom ValidateOpts |
+| `Iterator` | Memory-efficient line-by-line entry processing |
+| `readDir(path)` | Parse all ACH files in a directory |
+| `mergeDir(path)` | Read and merge all ACH files in a directory |
+| `mergeDirWith(path, conditions)` | Read and merge with custom limits |
+
+### Batch Factory
+
+| Export | Description |
+|--------|-------------|
+| `newBatch(header)` | Create the correct batch subclass from a BatchHeader |
+| `convertBatchType(batch, sec)` | Convert a batch to a different SEC type |
+| `registerBatchType(sec, factory)` | Register a custom batch type |
+
+### Utilities
+
+| Export | Description |
+|--------|-------------|
+| `CalculateCheckDigit(routingNumber)` | Compute the check digit for a routing number |
+| `CheckRoutingNumber(routingNumber)` | Validate a 9-digit ABA routing number |
+| `parseTXP(paymentInfo)` | Parse TXP-formatted tax payment data |
+| `txpString(txp)` | Serialize a TXP object to string |
+| `isTXPFormat(paymentInfo)` | Check if a string follows TXP format |
+| `allSpaces(s)` | Check if a string is all whitespace |
+
+### Configuration Types
+
+| Type | Description |
+|------|-------------|
+| `ValidateOpts` | 23 boolean validation bypass flags + custom `checkTransactionCode` callback |
+| `Conditions` | Merge constraints: `maxLines`, `maxDollarAmount` |
+| `WriteOpts` | Writer configuration: `lineEnding` |
+| `Offset` | Offset record configuration: routing, account, type, description |
+
+### Error Classes
+
+| Class | Description |
+|-------|-------------|
+| `ACHError` | Base error with `code` and `severity` fields |
+| `FieldError` | Field-level error with field name, value, and column positions |
+| `BatchError` | Batch-level error with batch number, SEC code, and field context |
+| `FileError` | File-level structural error |
+| `ParseError` | Reader parse error with line number and column range |
+
+All errors carry optional `line`, `startColumn`, `endColumn`, and `relatedLocations` fields for IDE diagnostic integration.
+
+## ValidateOpts
+
+The `ValidateOpts` interface controls which validation rules to enforce or bypass. Pass it to `Reader.setValidation()`, `File.setValidation()`, or `fileFromJSONWith()`.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `skipAll` | `false` | Disable all validation |
+| `requireABAOrigin` | `false` | Require valid ABA routing number as origin |
+| `bypassOriginValidation` | `false` | Skip origin field validation |
+| `bypassDestinationValidation` | `false` | Skip destination field validation |
+| `customTraceNumbers` | `false` | Allow trace numbers that don't match ODFI |
+| `allowZeroBatches` | `false` | Allow files with no batches |
+| `allowMissingFileHeader` | `false` | Allow files without a FileHeader record |
+| `allowMissingFileControl` | `false` | Allow files without a FileControl record |
+| `bypassCompanyIdentificationMatch` | `false` | Skip batch header/control company ID match |
+| `customReturnCodes` | `false` | Allow non-standard return codes in Addenda99 |
+| `unequalServiceClassCode` | `false` | Allow mismatched service class codes |
+| `allowUnorderedBatchNumbers` | `false` | Allow non-ascending batch numbers |
+| `allowInvalidCheckDigit` | `false` | Skip routing number check digit validation |
+| `unequalAddendaCounts` | `false` | Allow addenda count mismatches |
+| `preserveSpaces` | `false` | Retain trailing whitespace during parsing |
+| `allowInvalidAmounts` | `false` | Allow malformed amount fields |
+| `allowZeroEntryAmount` | `false` | Allow entries with zero dollar amounts |
+| `allowSpecialCharacters` | `false` | Allow non-alphanumeric characters in fields |
+| `allowEmptyIndividualName` | `false` | Allow blank individual name fields |
+| `bypassBatchValidation` | `false` | Skip all batch-level validation |
+| `skipFileCreationValidation` | `false` | Skip file creation date validation |
+| `skipBatchHeaderCompanyValidation` | `false` | Skip company name/ID validation in batch headers |
+| `checkTransactionCode` | `undefined` | Custom callback `(code: number) => Error \| null` |
+
+### Two-Tier Validation
+
+Every record level (File, Batch, Entry, Addenda) supports two validation modes:
+
+- **`validate()`** -- returns the first error encountered (fast-fail). Use for quick pass/fail checks.
+- **`validateAll()`** -- accumulates and returns all errors as an array. Use for comprehensive diagnostics, editor integrations, or showing all problems to a user at once.
 
 ## Design Decisions
 
-| Go Concept | TypeScript Approach |
-|---|---|
-| `validator` / `converters` embedded structs | Utility functions imported into classes (composition) |
-| `Batcher` interface | TypeScript `interface` + abstract `Batch` class |
-| `sync.Pool` buffer reuse | Not needed — JS strings are immutable, use concatenation |
-| `io.Reader` / `io.Writer` | String input/output (with optional Node stream adapters) |
-| Go error returns | `ACHError` subclasses thrown, with error codes matching Go |
-| `json:"fieldName"` struct tags | Explicit `toJSON()` / `fromJSON()` methods |
-| Go's `rune` processing | JavaScript native Unicode string handling |
-| `strconv.Atoi` / `strconv.Itoa` | `parseInt()` / `String()` |
-| Package-level vars (error sentinels) | Module-level `const` exports |
+This library is a port of the [moov-io/ach](https://github.com/moov-io/ach) Go library. The following table summarizes how Go patterns were translated to TypeScript.
 
-## Verification Plan
+| Go Pattern | TypeScript Equivalent |
+|------------|----------------------|
+| Embedded `validators` / `converters` interfaces | Stateless singleton objects (`converters`, `validators`) imported and called directly by each class |
+| `Batcher` interface with 23 concrete types | `Batcher` TypeScript interface + abstract `Batch` base class + 23 subclasses + runtime registry via `registerBatchType()` |
+| `io.Reader` / `io.Writer` | String-based input and output |
+| `sync.Pool` buffer reuse | Not needed -- JavaScript garbage collection handles buffer lifecycle |
+| Returned `error` values | Custom `Error` subclasses (`ACHError`, `FieldError`, `BatchError`, `FileError`) thrown as exceptions |
+| `json:"FieldName"` struct tags | Explicit key remapping dictionaries in `file.ts` for Go PascalCase to TypeScript camelCase conversion |
+| Rune indexing (`[]rune(s)[n]`) | Spread into character array (`[...record]`) for Unicode-safe slicing |
+| `strconv.Atoi` / `strconv.Itoa` | `parseInt()` / `String()` with NaN-safe defaults |
+| Package-level sentinel error variables | Module-level frozen `const` exports (`ErrNonAlphanumeric`, `ErrFieldRequired`, etc.) |
+| `time.Parse()` with layout strings | Multi-format `datetimeParse()` supporting ISO 8601, RFC 3339, and MM/DD/YYYY inputs |
 
-### Automated Tests
-- Run `npx vitest` after each phase to verify all ported tests pass
-- Each test file is a 1:1 port of the corresponding Go test file
-- Test coverage should match or exceed the Go library for each component
+### JSON Interoperability
 
-### Manual Verification
-- Round-trip test: Parse a NACHA file → Write it back → Binary-compare output
-- JSON round-trip: Parse → toJSON → fromJSON → Write → Compare
-- Cross-validate: Use the Go library to produce reference outputs and compare with TypeScript outputs
+The Go library uses PascalCase JSON keys derived from struct tags (e.g., `ODFIIdentification`, `RDFIIdentification`). The TypeScript library uses camelCase properties internally but maintains bidirectional key mapping so that:
 
-### Integration Tests (Phase 8)
-- All test fixtures from `moov-ach/test/testdata/` must parse and validate correctly
-- Files written by the TypeScript library should be parseable by the Go library (and vice versa)
+- `fileFromJSON()` accepts both Go-style PascalCase and TypeScript camelCase keys
+- `file.toJSON()` produces Go-compatible PascalCase keys for cross-language interoperability
+- Addenda records are hydrated from plain JSON objects into their proper class instances
 
+## TypeScript-Specific Additions
 
-## Tasks
-# ACH TypeScript Port - Task Tracker
+The following features are not present in the Go library and were added for the TypeScript port.
 
-## Phase 1: Foundation (Project Setup + Core Utilities) ✅
-- [x] Project setup (package.json, tsconfig.json, vitest.config.ts)
-- [x] src/constants.ts (~240 lines — all record positions, 23 SEC codes, transaction codes, categories)
-- [x] src/errors/ (ACHError, FieldError, BatchError, FileError — ~450 lines, 50+ sentinel errors, 21 error classes)
-- [x] src/utils/converters.ts (~160 lines — all converter methods, Unicode-aware)
-- [x] src/utils/validators.ts (~360 lines — 17+ validation methods, CalculateCheckDigit, CheckRoutingNumber)
-- [x] src/validateOpts.ts (~140 lines — 23 boolean flags + merge function)
-- [x] test/converters.test.ts (~425 lines, 20 tests)
-- [x] test/validators.test.ts (~420 lines, 64 tests)
+### Exhaustive Validation at Every Level
 
-## Phase 2: Record Types ✅
-- [x] src/fileHeader.ts (370 lines — Parse, String, Validate, ValidateWith + all field methods)
-- [x] src/fileControl.ts (95 lines — Parse, String, Validate + field methods)
-- [x] src/batchHeader.ts (165 lines — Parse, String, Validate, Equal + field methods)
-- [x] src/batchControl.ts (140 lines — Parse, String, Validate + field methods)
-- [x] src/entryDetail.ts (560 lines — Parse, String, Validate + all SEC-specific helpers)
-- [x] src/advEntryDetail.ts (ADV entry detail with accounting transaction codes 81-88)
-- [x] src/advBatchControl.ts (ADV batch control with operator data fields)
-- [x] src/advFileControl.ts (ADV file control with 20-digit dollar amount fields)
-- [x] test/fileHeader.test.ts (~300 lines, 26 tests)
-- [x] test/entryDetail.test.ts (~250 lines, 22 tests)
-- [x] test/records.test.ts (FileControl, BatchHeader, BatchControl — 13 tests)
-- [x] test/advRecords.test.ts (ADVEntryDetail, ADVBatchControl, ADVFileControl — 23 tests)
+The Go library only supports collecting all errors at the file level. In ach-ts, `validateAll()` is available on `File`, `Batch`, `EntryDetail`, and all addenda types. This returns an `Error[]` with every validation failure rather than stopping at the first.
 
-## Phase 3: Addenda Records ✅
-- [x] src/addenda02.ts (140 lines — POS/SHR/MTE support)
-- [x] src/addenda05.ts (85 lines — general purpose addenda)
-- [x] src/addenda10.ts (IAT — transaction type, foreign payment, name)
-- [x] src/addenda11.ts (IAT — originator name + street address)
-- [x] src/addenda12.ts (IAT — originator city/state/country/postal/DOB)
-- [x] src/addenda13.ts (IAT — ODFI name, ID qualifier, identification, country)
-- [x] src/addenda14.ts (IAT — RDFI name, ID qualifier, identification, country)
-- [x] src/addenda15.ts (IAT — receiver ID number + street address)
-- [x] src/addenda16.ts (IAT — receiver city/state/country/postal/DOB)
-- [x] src/addenda17.ts (IAT — payment related information, max 2 per entry)
-- [x] src/addenda18.ts (IAT — foreign correspondent bank info, max 5 per entry)
-- [x] src/addenda98.ts (240 lines — NOC with 19 change codes + writeCorrectionData)
-- [x] src/addenda98Refused.ts (Refused NOC with change code validation)
-- [x] src/addenda99.ts (210 lines — Returns with 54 return codes)
-- [x] src/addenda99Dishonored.ts (Dishonored returns — R61, R62, R67-R70)
-- [x] src/addenda99Contested.ts (Contested returns — R71-R77)
-- [x] test/addenda.test.ts (~400 lines, 28 tests — Addenda02, 05, 98, 99)
-- [x] test/addendaIAT.test.ts (Addenda10-18 — 37 tests)
-- [x] test/addendaVariants.test.ts (Addenda98Refused, 99Dishonored, 99Contested — 45 tests)
+### Structured Error Positioning
 
-## Phase 4: Batch System
-- [x] src/batch.ts (base Batch class + Batcher interface + newBatch factory)
-- [x] All 22 SEC batch types (src/batches/BatchACK.ts through BatchXCK.ts)
-- [x] src/batches/index.ts (barrel export + registration)
-- [x] src/iatBatchHeader.ts (IAT Batch Header with ForeignExchange fields)
-- [x] src/iatEntryDetail.ts (IAT Entry Detail with Addenda10-18 slots)
-- [x] src/iatBatch.ts (IAT Batch with full validation)
-- [x] test/batch.test.ts (14 tests — Batch creation, validation, SEC types)
-- [x] test/iatBatch.test.ts (9 tests — IATBatchHeader, IATEntryDetail, IATBatch)
+Every error object can carry positional metadata:
 
-## Phase 5: File Operations ✅
-- [x] src/file.ts (~1100 lines — File class, Create, Validate, ValidateTotals, JSON, SegmentFile, FlattenBatches)
-- [x] JSON key remapping (Go JSON tags → TypeScript camelCase properties)
-- [x] Addenda hydration from JSON (Addenda02/05/10-16/98/99 class instances)
-- [x] DateTime parsing (RFC3339, ISO 8601 → YYMMDD/HHmm)
-- [x] test/file.test.ts (88 tests — 82 ported 1:1 from file_test.go + 6 programmatic equivalents)
-- [x] 17 JSON fixture files copied to test/testdata/
+```typescript
+interface FieldError extends ACHError {
+  fieldName: string;
+  fieldValue?: unknown;
+  line?: number;        // 1-based line number in the ACH file
+  startColumn?: number; // 0-based start column in the 94-char record
+  endColumn?: number;   // 0-based end column (exclusive)
+  relatedLocations?: RelatedLocation[];
+}
+```
 
-## Phase 6: Reader & Writer
-- [x] src/reader.ts
-- [x] src/writer.ts
-- [x] Tests for reader/writer
+This makes errors directly mappable to editor diagnostics without any post-processing.
 
-## Phase 7: Advanced Features
-- [x] src/merge.ts (mergeFiles, mergeFilesWith with Conditions — line/dollar amount limits, trace collision handling)
-- [x] File.reversal() method in src/file.ts (transaction code swapping, service class recalculation)
-- [x] src/iterator.ts (Iterator class — line-by-line entry processing, fake batch header support)
-- [x] FlattenBatches already in src/file.ts (Phase 5)
-- [x] SegmentFile already in src/file.ts (Phase 5)
-- [x] SegmentFileConfiguration — skipped (empty placeholder in Go)
-- [x] Updated src/index.ts exports (mergeFiles, mergeFilesWith, Conditions, Iterator, allSpaces)
-- [x] Fixed BatchHeader.equal() to match Go (Nacha-defined fields only, excludes batchNumber)
-- [x] Fixed reversal LoanDebit case (hasCredits not hasDebits)
-- [x] test/reversal.test.ts (4 tests — credit, debit, GL double reversal, Loan double reversal)
-- [x] test/merge.test.ts (10 tests — identity, multiple, together, apart, line limit, dollar limit, collision, ValidateOpts)
-- [x] test/iterator.test.ts (11 tests — PPD, multi-file, IAT skip, returns, no-batch-header, blank, whitespace)
+### Stable Error Codes and Severity
 
-## Phase 8: Integration Testing
-- [x] Copy test fixtures (8 JSON + 24 SEC ACH + 4 specialized = 36 new fixtures)
-- [x] test/integration.test.ts (149 tests — ACH round-trip, ValidateOpts files, structural validation, idempotent write, crasher resilience, invalid file handling)
-- [x] test/jsonRoundTrip.test.ts (19 tests — JSON parse→serialize→re-parse, JSON→ACH→JSON cross-format, invalid JSON)
-- [x] test/secCodes.test.ts (112 tests — all 22 SEC codes + 6 IAT fixtures, parse→create→validate)
-- [x] Fixed Addenda99Dishonored/Contested/98Refused JSON hydration bug in src/file.ts
+The `errorCodes` module assigns stable string codes (e.g., `"nonAlphanumeric"`, `"serviceClass"`) and severity levels (`"error"`, `"warning"`, `"info"`) to all sentinel errors. These survive serialization and can be used for filtering, grouping, or localization.
+
+### Field Position Specifications
+
+The `fieldPositions` module defines `FieldSpec` arrays for every record type, mapping each field name to its column range within the 94-character line. The `enrichErrors()` function uses these to annotate `FieldError` instances with column positions automatically.
+
+### LSP Diagnostic Workflow
+
+The `Reader.readWithErrors()` method returns both the (possibly partial) parsed file and an array of parse errors without throwing. Combined with `file.validateAll()` and the structured error properties, this provides a complete pipeline for building LSP language servers or editor extensions:
+
+```typescript
+const reader = new Reader(contents);
+const { file, errors } = reader.readWithErrors();
+if (errors.length === 0) {
+  errors.push(...file.validateAll());
+}
+// Each error has line, startColumn, endColumn, code, severity
+// Map directly to LSP Diagnostic[]
+```
+
+### TXP Tax Payment Parsing
+
+The `parseTXP()`, `txpString()`, and `isTXPFormat()` functions handle TXP-formatted payment information strings used in Addenda05 records for tax payments. These parse and serialize the `TXP*` delimited format with tax identification numbers, payment type codes, dates, and amount breakdowns.
+
+### Directory Utilities
+
+The `readDir()`, `mergeDir()`, and `mergeDirWith()` async functions scan a directory for ACH files, attempting to parse each as NACHA fixed-width first and then as JSON. Only successfully parsed files are returned.
+
+### Flexible DateTime Parsing
+
+When deserializing from JSON, date fields accept ISO 8601, RFC 3339, and MM/DD/YYYY formats and are automatically converted to the YYMMDD and HHmm formats required by NACHA fixed-width records.
+
+## Project Structure
+
+```
+src/
+  index.ts                 Public API exports
+  constants.ts             Record positions, SEC codes, transaction codes
+  validateOpts.ts          ValidateOpts interface
+  errors/index.ts          ACHError, FieldError, BatchError, FileError, sentinel errors
+  errorCodes.ts            Stable error codes and severity assignments
+  fieldPositions.ts        FieldSpec definitions for column-level error mapping
+  utils/
+    converters.ts          String/numeric field formatting
+    validators.ts          Validation functions, check digit calculation
+  fileHeader.ts            FileHeader record
+  fileControl.ts           FileControl record
+  batchHeader.ts           BatchHeader record
+  batchControl.ts          BatchControl record
+  entryDetail.ts           EntryDetail record
+  addenda/
+    addenda02.ts           POS/SHR/MTE terminal info
+    addenda05.ts           General-purpose payment info
+    addenda10.ts--18.ts    IAT addenda records
+    addenda98.ts           Notification of Change
+    addenda98Refused.ts    Refused NOC
+    addenda99.ts           Returns
+    addenda99Dishonored.ts Dishonored returns
+    addenda99Contested.ts  Contested returns
+    txp.ts                 TXP tax payment parsing
+    index.ts               Barrel exports
+  advEntryDetail.ts        ADV entry detail
+  advBatchControl.ts       ADV batch control
+  advFileControl.ts        ADV file control
+  batch.ts                 Batch base class, Batcher interface, factory
+  batches/
+    BatchACK.ts--XCK.ts    23 SEC-specific batch implementations
+    index.ts               Barrel exports + type registration
+  iatBatchHeader.ts        IAT batch header
+  iatEntryDetail.ts        IAT entry detail
+  iatBatch.ts              IAT batch
+  file.ts                  File class (create, validate, JSON, segment, flatten, reverse)
+  reader.ts                ACH file parser
+  writer.ts                ACH file writer
+  merge.ts                 File merging with line/dollar limits
+  iterator.ts              Memory-efficient entry iterator
+  dir.ts                   Directory scanning utilities
+test/
+  testdata/                ACH and JSON fixture files
+  33 test files            Unit, integration, round-trip, crasher resilience
+```
+
+## Testing
+
+The test suite uses [Vitest](https://vitest.dev/) and contains 33 test files covering:
+
+- **Unit tests** -- individual record types, converters, validators, addenda, batch types
+- **Integration tests** -- full ACH file round-trip (parse, create, validate, write, re-parse)
+- **JSON round-trip tests** -- JSON parse, serialize, re-parse; JSON-to-ACH cross-format
+- **SEC code tests** -- all 22 SEC codes plus 6 IAT fixtures parsed, created, and validated
+- **Crasher resilience** -- malformed and adversarial inputs
+- **LSP diagnostic workflow** -- end-to-end structured error mapping
+
+```bash
+npm test           # Run all tests
+npm run test:watch # Watch mode
+```
+
+## License
+
+This project is licensed under the [MIT License](LICENSE.md).
+
+Portions of this code are derived from [moov-io/ach](https://github.com/moov-io/ach), which is licensed under the Apache License 2.0. See [NOTICE](NOTICE) and [licenses/LICENSE_ach](licenses/LICENSE_ach) for details.

@@ -68,6 +68,12 @@ export class BatchCTX extends Batch {
     if (err) return err;
     return this.validate();
   }
+
+  static from(b: Batch): BatchCTX {
+    const inst = new BatchCTX();
+    Batch.copyFrom(b, inst);
+    return inst;
+  }
 }
 
-registerBatchType(CTX, (b: Batch) => Object.setPrototypeOf(b, BatchCTX.prototype) as BatchCTX);
+registerBatchType(CTX, (b: Batch) => BatchCTX.from(b));

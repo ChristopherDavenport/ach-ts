@@ -1,13 +1,13 @@
-import { entryAddendaPos } from './constants.js';
-import { enrichErrors, addenda98FieldPositions } from './fieldPositions.js';
-import { Converters } from './utils/converters.js';
+import { entryAddendaPos } from '../constants.js';
+import { enrichErrors, enrichError, addenda98FieldPositions } from '../fieldPositions.js';
+import { Converters, converters } from '../utils/converters.js';
 import {
   fieldError,
   ErrConstructor,
   ErrAddendaTypeCode,
   ErrAddenda98ChangeCode,
   ErrAddenda98CorrectedData,
-} from './errors/index.js';
+} from '../errors/index.js';
 
 export interface ChangeCode {
   code: string;
@@ -75,9 +75,6 @@ export class Addenda98 {
 
   /** IAT corrected data - additional space for IAT corrections */
   private iatCorrectedData = '';
-
-  private converters = new Converters();
-
   parse(record: string): void {
     const runes = [...record];
     if (runes.length !== 94) return;
@@ -91,7 +88,7 @@ export class Addenda98 {
     this.originalTrace = runes.slice(6, 21).join('').trim();
     // 22-27 Reserved
     // 28-35 OriginalDFI
-    this.originalDFI = this.converters.parseStringField(runes.slice(27, 35).join(''));
+    this.originalDFI = converters.parseStringField(runes.slice(27, 35).join(''));
     // 36-64 CorrectedData
     this.correctedData = runes.slice(35, 64).join('').trim();
     // 65-70 IAT Corrected Data (reserved for non-IAT)
@@ -116,6 +113,12 @@ export class Addenda98 {
   }
 
   validate(): Error | null {
+    const err = this._validate();
+    if (err) enrichError(err, this.lineNumber, addenda98FieldPositions);
+    return err;
+  }
+
+  private _validate(): Error | null {
     if (this.typeCode === '') {
       return fieldError('TypeCode', ErrConstructor, this.typeCode);
     }
@@ -148,22 +151,22 @@ export class Addenda98 {
     return changeCodeDict.get(this.changeCode) ?? null;
   }
 
-  originalTraceField(): string { return this.converters.stringField(this.originalTrace, 15); }
-  originalDFIField(): string { return this.converters.stringField(this.originalDFI, 8); }
+  originalTraceField(): string { return converters.stringField(this.originalTrace, 15); }
+  originalDFIField(): string { return converters.stringField(this.originalDFI, 8); }
 
   correctedDataField(): string {
     if (this.iatCorrectedData === '') {
-      return this.converters.alphaField(this.correctedData, 29);
+      return converters.alphaField(this.correctedData, 29);
     }
     return this.iatCorrectedDataField();
   }
 
   iatCorrectedDataField(): string {
-    return this.converters.alphaField(this.correctedData, 29) +
-      this.converters.alphaField(this.iatCorrectedData, 6);
+    return converters.alphaField(this.correctedData, 29) +
+      converters.alphaField(this.iatCorrectedData, 6);
   }
 
-  traceNumberField(): string { return this.converters.stringField(this.traceNumber, 15); }
+  traceNumberField(): string { return converters.stringField(this.traceNumber, 15); }
 }
 
 export function newAddenda98(): Addenda98 {
@@ -181,13 +184,13 @@ export interface CorrectedData {
 
 /** WriteCorrectionData formats corrected data for an Addenda98 CorrectedData field */
 export function writeCorrectionData(code: string, data: CorrectedData): string {
-  const c = new Converters();
+  // Use shared converters singleton
   const len = 29;
   switch (code.toUpperCase()) {
     case 'C01':
-      return c.alphaField(data.accountNumber ?? '', len);
+      return converters.alphaField(data.accountNumber ?? '', len);
     case 'C02':
-      return c.alphaField(data.routingNumber ?? '', len);
+      return converters.alphaField(data.routingNumber ?? '', len);
     case 'C03': {
       const rn = data.routingNumber ?? '';
       const an = data.accountNumber ?? '';
@@ -195,9 +198,9 @@ export function writeCorrectionData(code: string, data: CorrectedData): string {
       return `${rn}${spaces}${an}`;
     }
     case 'C04':
-      return c.alphaField(data.name ?? '', len);
+      return converters.alphaField(data.name ?? '', len);
     case 'C05':
-      return c.alphaField(String(data.transactionCode ?? 0), len);
+      return converters.alphaField(String(data.transactionCode ?? 0), len);
     case 'C06': {
       const an = data.accountNumber ?? '';
       const tc = String(data.transactionCode ?? 0);
@@ -212,7 +215,7 @@ export function writeCorrectionData(code: string, data: CorrectedData): string {
       return `${rn}${an}${spaces}${tc}`;
     }
     case 'C09':
-      return c.alphaField(data.identification ?? '', len);
+      return converters.alphaField(data.identification ?? '', len);
   }
-  return c.alphaField('', len);
+  return converters.alphaField('', len);
 }

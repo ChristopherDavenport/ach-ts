@@ -1,13 +1,13 @@
-import { entryAddendaPos } from './constants.js';
-import { enrichErrors, addenda99DishonoredFieldPositions } from './fieldPositions.js';
-import type { ValidateOpts } from './validateOpts.js';
-import { Converters } from './utils/converters.js';
+import { entryAddendaPos } from '../constants.js';
+import { enrichErrors, enrichError, addenda99DishonoredFieldPositions } from '../fieldPositions.js';
+import type { ValidateOpts } from '../validateOpts.js';
+import { Converters, converters } from '../utils/converters.js';
 import {
   fieldError,
   ErrConstructor,
   ErrAddendaTypeCode,
   ErrAddenda99DishonoredReturnCode,
-} from './errors/index.js';
+} from '../errors/index.js';
 
 /** Valid dishonored return reason codes */
 const dishonoredReturnCodes = new Set(['R61', 'R62', 'R67', 'R68', 'R69', 'R70']);
@@ -31,8 +31,6 @@ export class Addenda99Dishonored {
   addendaInformation = '';
   traceNumber = '';
   lineNumber = 0;
-
-  private converters = new Converters();
   validateOpts?: ValidateOpts;
 
   parse(record: string): void {
@@ -82,6 +80,12 @@ export class Addenda99Dishonored {
   }
 
   validate(): Error | null {
+    const err = this._validate();
+    if (err) enrichError(err, this.lineNumber, addenda99DishonoredFieldPositions);
+    return err;
+  }
+
+  private _validate(): Error | null {
     if (this.typeCode === '') return fieldError('TypeCode', ErrConstructor, this.typeCode);
     if (this.typeCode !== '99') return fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode);
 
@@ -109,14 +113,14 @@ export class Addenda99Dishonored {
     return enrichErrors(errors, this.lineNumber, addenda99DishonoredFieldPositions);
   }
 
-  dishonoredReturnReasonCodeField(): string { return this.converters.stringField(this.dishonoredReturnReasonCode, 3); }
-  originalEntryTraceNumberField(): string { return this.converters.stringField(this.originalEntryTraceNumber, 15); }
-  originalReceivingDFIIdentificationField(): string { return this.converters.stringField(this.originalReceivingDFIIdentification, 8); }
-  returnTraceNumberField(): string { return this.converters.stringField(this.returnTraceNumber, 15); }
-  returnSettlementDateField(): string { return this.converters.stringField(this.returnSettlementDate, 3); }
-  returnReasonCodeField(): string { return this.converters.stringField(this.returnReasonCode, 2); }
-  addendaInformationField(): string { return this.converters.alphaField(this.addendaInformation, 21); }
-  traceNumberField(): string { return this.converters.stringField(this.traceNumber, 15); }
+  dishonoredReturnReasonCodeField(): string { return converters.stringField(this.dishonoredReturnReasonCode, 3); }
+  originalEntryTraceNumberField(): string { return converters.stringField(this.originalEntryTraceNumber, 15); }
+  originalReceivingDFIIdentificationField(): string { return converters.stringField(this.originalReceivingDFIIdentification, 8); }
+  returnTraceNumberField(): string { return converters.stringField(this.returnTraceNumber, 15); }
+  returnSettlementDateField(): string { return converters.stringField(this.returnSettlementDate, 3); }
+  returnReasonCodeField(): string { return converters.stringField(this.returnReasonCode, 2); }
+  addendaInformationField(): string { return converters.alphaField(this.addendaInformation, 21); }
+  traceNumberField(): string { return converters.stringField(this.traceNumber, 15); }
 }
 
 export function newAddenda99Dishonored(): Addenda99Dishonored { return new Addenda99Dishonored(); }

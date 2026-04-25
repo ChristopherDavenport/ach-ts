@@ -62,6 +62,12 @@ export class BatchXCK extends Batch {
     if (err) return err;
     return this.validate();
   }
+
+  static from(b: Batch): BatchXCK {
+    const inst = new BatchXCK();
+    Batch.copyFrom(b, inst);
+    return inst;
+  }
 }
 
-registerBatchType(XCK, (b: Batch) => Object.setPrototypeOf(b, BatchXCK.prototype) as BatchXCK);
+registerBatchType(XCK, (b: Batch) => BatchXCK.from(b));

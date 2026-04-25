@@ -758,13 +758,13 @@ describe('getAddendaFieldPositions', () => {
 // Phase 2: IATBatch enrichment
 // =========================================================================
 
-import { Addenda10 } from '../src/addenda10.js';
-import { Addenda11 } from '../src/addenda11.js';
-import { Addenda12 } from '../src/addenda12.js';
-import { Addenda13 } from '../src/addenda13.js';
-import { Addenda14 } from '../src/addenda14.js';
-import { Addenda15 } from '../src/addenda15.js';
-import { Addenda16 } from '../src/addenda16.js';
+import { Addenda10 } from '../src/addenda/addenda10.js';
+import { Addenda11 } from '../src/addenda/addenda11.js';
+import { Addenda12 } from '../src/addenda/addenda12.js';
+import { Addenda13 } from '../src/addenda/addenda13.js';
+import { Addenda14 } from '../src/addenda/addenda14.js';
+import { Addenda15 } from '../src/addenda/addenda15.js';
+import { Addenda16 } from '../src/addenda/addenda16.js';
 import {
   MixedDebitsAndCredits, CheckingCredit, IAT, CategoryForward,
 } from '../src/constants.js';

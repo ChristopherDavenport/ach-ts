@@ -47,6 +47,12 @@ export class BatchTEL extends Batch {
     if (err) return err;
     return this.validate();
   }
+
+  static from(b: Batch): BatchTEL {
+    const inst = new BatchTEL();
+    Batch.copyFrom(b, inst);
+    return inst;
+  }
 }
 
-registerBatchType(TEL, (b: Batch) => Object.setPrototypeOf(b, BatchTEL.prototype) as BatchTEL);
+registerBatchType(TEL, (b: Batch) => BatchTEL.from(b));

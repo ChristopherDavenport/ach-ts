@@ -1,14 +1,14 @@
-import { entryAddendaPos } from './constants.js';
-import { enrichErrors, addenda99FieldPositions } from './fieldPositions.js';
-import type { ValidateOpts } from './validateOpts.js';
-import { Converters } from './utils/converters.js';
-import { Validators } from './utils/validators.js';
+import { entryAddendaPos } from '../constants.js';
+import { enrichErrors, enrichError, addenda99FieldPositions } from '../fieldPositions.js';
+import type { ValidateOpts } from '../validateOpts.js';
+import { Converters, converters } from '../utils/converters.js';
+import { Validators, validators } from '../utils/validators.js';
 import {
   fieldError,
   ErrConstructor,
   ErrAddendaTypeCode,
   ErrAddenda99ReturnCode,
-} from './errors/index.js';
+} from '../errors/index.js';
 
 export interface ReturnCode {
   code: string;
@@ -115,9 +115,6 @@ export class Addenda99 {
   addendaInformation = '';
   traceNumber = '';
   lineNumber = 0;
-
-  private converters = new Converters();
-  private validators = new Validators();
   validateOpts?: ValidateOpts;
 
   parse(record: string): void {
@@ -132,9 +129,9 @@ export class Addenda99 {
     // 7-21 OriginalTrace
     this.originalTrace = runes.slice(6, 21).join('').trim();
     // 22-27 DateOfDeath (YYMMDD) or blank
-    this.dateOfDeath = this.validators.validateSimpleDate(runes.slice(21, 27).join(''));
+    this.dateOfDeath = validators.validateSimpleDate(runes.slice(21, 27).join(''));
     // 28-35 OriginalDFI
-    this.originalDFI = this.converters.parseStringField(runes.slice(27, 35).join(''));
+    this.originalDFI = converters.parseStringField(runes.slice(27, 35).join(''));
     // 36-79 AddendaInformation
     this.addendaInformation = runes.slice(35, 79).join('');
     // 80-94 TraceNumber
@@ -159,6 +156,12 @@ export class Addenda99 {
   }
 
   validate(): Error | null {
+    const err = this._validate();
+    if (err) enrichError(err, this.lineNumber, addenda99FieldPositions);
+    return err;
+  }
+
+  private _validate(): Error | null {
     if (this.typeCode === '') {
       return fieldError('TypeCode', ErrConstructor, this.typeCode);
     }
@@ -191,22 +194,22 @@ export class Addenda99 {
     return returnCodeDict.get(this.returnCode) ?? null;
   }
 
-  originalTraceField(): string { return this.converters.stringField(this.originalTrace, 15); }
+  originalTraceField(): string { return converters.stringField(this.originalTrace, 15); }
 
   dateOfDeathField(): string {
     if (this.dateOfDeath === '') {
-      return this.converters.alphaField('', 6);
+      return converters.alphaField('', 6);
     }
-    return this.converters.formatSimpleDate(this.dateOfDeath);
+    return converters.formatSimpleDate(this.dateOfDeath);
   }
 
-  originalDFIField(): string { return this.converters.stringField(this.originalDFI, 8); }
-  addendaInformationField(): string { return this.converters.alphaField(this.addendaInformation, 44); }
-  traceNumberField(): string { return this.converters.stringField(this.traceNumber, 15); }
+  originalDFIField(): string { return converters.stringField(this.originalDFI, 8); }
+  addendaInformationField(): string { return converters.alphaField(this.addendaInformation, 44); }
+  traceNumberField(): string { return converters.stringField(this.traceNumber, 15); }
 
   // IAT helpers
-  iatPaymentAmount(s: string): void { this.addendaInformation = this.converters.stringField(s, 10); }
-  iatAddendaInformation(s: string): void { this.addendaInformation += this.converters.alphaField(s, 34); }
+  iatPaymentAmount(s: string): void { this.addendaInformation = converters.stringField(s, 10); }
+  iatAddendaInformation(s: string): void { this.addendaInformation += converters.alphaField(s, 34); }
 }
 
 export function newAddenda99(): Addenda99 {

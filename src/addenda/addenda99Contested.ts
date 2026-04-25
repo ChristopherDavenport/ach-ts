@@ -1,13 +1,13 @@
-import { entryAddendaPos } from './constants.js';
-import { enrichErrors, addenda99ContestedFieldPositions } from './fieldPositions.js';
-import type { ValidateOpts } from './validateOpts.js';
-import { Converters } from './utils/converters.js';
+import { entryAddendaPos } from '../constants.js';
+import { enrichErrors, enrichError, addenda99ContestedFieldPositions } from '../fieldPositions.js';
+import type { ValidateOpts } from '../validateOpts.js';
+import { Converters, converters } from '../utils/converters.js';
 import {
   fieldError,
   ErrConstructor,
   ErrAddendaTypeCode,
   ErrAddenda99ContestedReturnCode,
-} from './errors/index.js';
+} from '../errors/index.js';
 
 /** Valid contested return codes */
 const contestedReturnCodes = new Set(['R71', 'R72', 'R73', 'R74', 'R75', 'R76', 'R77']);
@@ -35,8 +35,6 @@ export class Addenda99Contested {
   dishonoredReturnReasonCode = '';
   traceNumber = '';
   lineNumber = 0;
-
-  private converters = new Converters();
   validateOpts?: ValidateOpts;
 
   parse(record: string): void {
@@ -96,6 +94,12 @@ export class Addenda99Contested {
   }
 
   validate(): Error | null {
+    const err = this._validate();
+    if (err) enrichError(err, this.lineNumber, addenda99ContestedFieldPositions);
+    return err;
+  }
+
+  private _validate(): Error | null {
     if (this.typeCode === '') return fieldError('TypeCode', ErrConstructor, this.typeCode);
     if (this.typeCode !== '99') return fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode);
 
@@ -123,18 +127,18 @@ export class Addenda99Contested {
     return enrichErrors(errors, this.lineNumber, addenda99ContestedFieldPositions);
   }
 
-  contestedReturnCodeField(): string { return this.converters.stringField(this.contestedReturnCode, 3); }
-  originalEntryTraceNumberField(): string { return this.converters.stringField(this.originalEntryTraceNumber, 15); }
-  dateOriginalEntryReturnedField(): string { return this.converters.stringField(this.dateOriginalEntryReturned, 6); }
-  originalReceivingDFIIdentificationField(): string { return this.converters.stringField(this.originalReceivingDFIIdentification, 8); }
-  originalSettlementDateField(): string { return this.converters.stringField(this.originalSettlementDate, 3); }
-  returnTraceNumberField(): string { return this.converters.stringField(this.returnTraceNumber, 15); }
-  returnSettlementDateField(): string { return this.converters.stringField(this.returnSettlementDate, 3); }
-  returnReasonCodeField(): string { return this.converters.stringField(this.returnReasonCode, 2); }
-  dishonoredReturnTraceNumberField(): string { return this.converters.stringField(this.dishonoredReturnTraceNumber, 15); }
-  dishonoredReturnSettlementDateField(): string { return this.converters.stringField(this.dishonoredReturnSettlementDate, 3); }
-  dishonoredReturnReasonCodeField(): string { return this.converters.stringField(this.dishonoredReturnReasonCode, 2); }
-  traceNumberField(): string { return this.converters.stringField(this.traceNumber, 15); }
+  contestedReturnCodeField(): string { return converters.stringField(this.contestedReturnCode, 3); }
+  originalEntryTraceNumberField(): string { return converters.stringField(this.originalEntryTraceNumber, 15); }
+  dateOriginalEntryReturnedField(): string { return converters.stringField(this.dateOriginalEntryReturned, 6); }
+  originalReceivingDFIIdentificationField(): string { return converters.stringField(this.originalReceivingDFIIdentification, 8); }
+  originalSettlementDateField(): string { return converters.stringField(this.originalSettlementDate, 3); }
+  returnTraceNumberField(): string { return converters.stringField(this.returnTraceNumber, 15); }
+  returnSettlementDateField(): string { return converters.stringField(this.returnSettlementDate, 3); }
+  returnReasonCodeField(): string { return converters.stringField(this.returnReasonCode, 2); }
+  dishonoredReturnTraceNumberField(): string { return converters.stringField(this.dishonoredReturnTraceNumber, 15); }
+  dishonoredReturnSettlementDateField(): string { return converters.stringField(this.dishonoredReturnSettlementDate, 3); }
+  dishonoredReturnReasonCodeField(): string { return converters.stringField(this.dishonoredReturnReasonCode, 2); }
+  traceNumberField(): string { return converters.stringField(this.traceNumber, 15); }
 }
 
 export function newAddenda99Contested(): Addenda99Contested { return new Addenda99Contested(); }

@@ -55,6 +55,12 @@ export class BatchACK extends Batch {
     if (err) return err;
     return this.validate();
   }
+
+  static from(b: Batch): BatchACK {
+    const inst = new BatchACK();
+    Batch.copyFrom(b, inst);
+    return inst;
+  }
 }
 
 export function newBatchACK(bh: import('../batchHeader.js').BatchHeader): BatchACK {
@@ -64,4 +70,4 @@ export function newBatchACK(bh: import('../batchHeader.js').BatchHeader): BatchA
   return batch;
 }
 
-registerBatchType(ACK, (b: Batch) => Object.setPrototypeOf(b, BatchACK.prototype) as BatchACK);
+registerBatchType(ACK, (b: Batch) => BatchACK.from(b));

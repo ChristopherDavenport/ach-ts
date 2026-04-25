@@ -70,6 +70,12 @@ export class BatchADV extends Batch {
     if (err) return err;
     return this.validate();
   }
+
+  static from(b: Batch): BatchADV {
+    const inst = new BatchADV();
+    Batch.copyFrom(b, inst);
+    return inst;
+  }
 }
 
 export function newBatchADV(bh: import('../batchHeader.js').BatchHeader): BatchADV {
@@ -79,4 +85,4 @@ export function newBatchADV(bh: import('../batchHeader.js').BatchHeader): BatchA
   return batch;
 }
 
-registerBatchType(ADV, (b: Batch) => Object.setPrototypeOf(b, BatchADV.prototype) as BatchADV);
+registerBatchType(ADV, (b: Batch) => BatchADV.from(b));

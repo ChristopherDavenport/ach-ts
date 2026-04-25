@@ -1,13 +1,13 @@
-import { entryAddendaPos } from './constants.js';
-import { enrichErrors, addenda11FieldPositions } from './fieldPositions.js';
-import type { ValidateOpts } from './validateOpts.js';
-import { Converters } from './utils/converters.js';
-import { Validators } from './utils/validators.js';
+import { entryAddendaPos } from '../constants.js';
+import { enrichErrors, enrichError, addenda11FieldPositions } from '../fieldPositions.js';
+import type { ValidateOpts } from '../validateOpts.js';
+import { Converters, converters } from '../utils/converters.js';
+import { Validators, validators } from '../utils/validators.js';
 import {
   fieldError,
   ErrConstructor,
   ErrAddendaTypeCode,
-} from './errors/index.js';
+} from '../errors/index.js';
 
 /**
  * Addenda11 is an IAT addenda record providing originator name and street address.
@@ -19,9 +19,6 @@ export class Addenda11 {
   originatorStreetAddress = '';
   entryDetailSequenceNumber = 0;
   lineNumber = 0;
-
-  private converters = new Converters();
-  private validators = new Validators();
   validateOpts?: ValidateOpts;
 
   parse(record: string): void {
@@ -32,7 +29,7 @@ export class Addenda11 {
     this.originatorName = runes.slice(3, 38).join('').trim();
     this.originatorStreetAddress = runes.slice(38, 73).join('').trim();
     // 74-87 Reserved
-    this.entryDetailSequenceNumber = this.converters.parseNumField(runes.slice(87, 94).join(''));
+    this.entryDetailSequenceNumber = converters.parseNumField(runes.slice(87, 94).join(''));
   }
 
   setValidation(opts: ValidateOpts | undefined): void { this.validateOpts = opts; }
@@ -49,15 +46,21 @@ export class Addenda11 {
   }
 
   validate(): Error | null {
+    const err = this._validate();
+    if (err) enrichError(err, this.lineNumber, addenda11FieldPositions);
+    return err;
+  }
+
+  private _validate(): Error | null {
     const inclErr = this.fieldInclusion();
     if (inclErr) return inclErr;
 
     if (this.typeCode !== '11') return fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode);
 
     if (!this.validateOpts?.allowSpecialCharacters) {
-      const nameErr = this.validators.isAlphanumeric(this.originatorName);
+      const nameErr = validators.isAlphanumeric(this.originatorName);
       if (nameErr) return fieldError('OriginatorName', nameErr, this.originatorName);
-      const addrErr = this.validators.isAlphanumeric(this.originatorStreetAddress);
+      const addrErr = validators.isAlphanumeric(this.originatorStreetAddress);
       if (addrErr) return fieldError('OriginatorStreetAddress', addrErr, this.originatorStreetAddress);
     }
     return null;
@@ -76,8 +79,8 @@ export class Addenda11 {
 
     if (this.typeCode !== '11') push(fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode));
     if (!this.validateOpts?.allowSpecialCharacters) {
-      push(fieldError('OriginatorName', this.validators.isAlphanumeric(this.originatorName), this.originatorName));
-      push(fieldError('OriginatorStreetAddress', this.validators.isAlphanumeric(this.originatorStreetAddress), this.originatorStreetAddress));
+      push(fieldError('OriginatorName', validators.isAlphanumeric(this.originatorName), this.originatorName));
+      push(fieldError('OriginatorStreetAddress', validators.isAlphanumeric(this.originatorStreetAddress), this.originatorStreetAddress));
     }
 
     return enrichErrors(errors, this.lineNumber, addenda11FieldPositions);
@@ -91,9 +94,9 @@ export class Addenda11 {
     return null;
   }
 
-  originatorNameField(): string { return this.converters.alphaField(this.originatorName, 35); }
-  originatorStreetAddressField(): string { return this.converters.alphaField(this.originatorStreetAddress, 35); }
-  entryDetailSequenceNumberField(): string { return this.converters.numericField(this.entryDetailSequenceNumber, 7); }
+  originatorNameField(): string { return converters.alphaField(this.originatorName, 35); }
+  originatorStreetAddressField(): string { return converters.alphaField(this.originatorStreetAddress, 35); }
+  entryDetailSequenceNumberField(): string { return converters.numericField(this.entryDetailSequenceNumber, 7); }
 }
 
 export function newAddenda11(): Addenda11 { return new Addenda11(); }

@@ -29,23 +29,23 @@ import { ADVEntryDetail } from './advEntryDetail.js';
 import { IATBatch } from './iatBatch.js';
 import { IATBatchHeader } from './iatBatchHeader.js';
 import { IATEntryDetail } from './iatEntryDetail.js';
-import { Addenda05, newAddenda05 } from './addenda05.js';
-import { newAddenda98 } from './addenda98.js';
-import { Addenda98Refused, newAddenda98Refused } from './addenda98Refused.js';
-import { newAddenda99 } from './addenda99.js';
-import { Addenda99Dishonored, newAddenda99Dishonored } from './addenda99Dishonored.js';
-import { Addenda99Contested, newAddenda99Contested } from './addenda99Contested.js';
-import { Addenda02, newAddenda02 } from './addenda02.js';
-import { Addenda10 } from './addenda10.js';
-import { Addenda11 } from './addenda11.js';
-import { Addenda12 } from './addenda12.js';
-import { Addenda13 } from './addenda13.js';
-import { Addenda14 } from './addenda14.js';
-import { Addenda15 } from './addenda15.js';
-import { Addenda16 } from './addenda16.js';
+import { Addenda05, newAddenda05 } from './addenda/addenda05.js';
+import { newAddenda98 } from './addenda/addenda98.js';
+import { Addenda98Refused, newAddenda98Refused } from './addenda/addenda98Refused.js';
+import { newAddenda99 } from './addenda/addenda99.js';
+import { Addenda99Dishonored, newAddenda99Dishonored } from './addenda/addenda99Dishonored.js';
+import { Addenda99Contested, newAddenda99Contested } from './addenda/addenda99Contested.js';
+import { Addenda02, newAddenda02 } from './addenda/addenda02.js';
+import { Addenda10 } from './addenda/addenda10.js';
+import { Addenda11 } from './addenda/addenda11.js';
+import { Addenda12 } from './addenda/addenda12.js';
+import { Addenda13 } from './addenda/addenda13.js';
+import { Addenda14 } from './addenda/addenda14.js';
+import { Addenda15 } from './addenda/addenda15.js';
+import { Addenda16 } from './addenda/addenda16.js';
 import type { Batcher } from './batch.js';
 import { Batch, newBatch, convertBatchType } from './batch.js';
-import { Converters } from './utils/converters.js';
+import { Converters, converters } from './utils/converters.js';
 import {
   FileError,
   ErrFileNoBatches,
@@ -57,7 +57,6 @@ import {
 } from './errors/index.js';
 import { fileControlFieldPositions, advFileControlFieldPositions, fileHeaderFieldPositions } from './fieldPositions.js';
 
-const converters = new Converters();
 
 // Date parsing formats (JS equivalents of Go's time layouts)
 const datetimeFormats = [
@@ -110,6 +109,11 @@ export class File {
   id = '';
   header: FileHeader;
   batches: Batcher[] = [];
+  /**
+   * IAT batches are stored separately because IATBatch uses IATBatchHeader and
+   * IATEntryDetail, which are type-incompatible with the Batcher interface's
+   * BatchHeader and EntryDetail. This mirrors the Go source's `[]IATBatch` field.
+   */
   iatBatches: IATBatch[] = [];
   control: FileControl;
   advControl: ADVFileControl;
@@ -314,7 +318,9 @@ export class File {
   // --- Validate ---
 
   validate(): Error | null {
-    return this.validateWith(this.validateOpts);
+    const err = this.validateWith(this.validateOpts);
+    if (err) this.enrichFileError(err);
+    return err;
   }
 
   validateWith(opts?: ValidateOpts): Error | null {
@@ -417,42 +423,42 @@ export class File {
 
     // Enrich file-level errors with positional data
     for (const err of errors) {
-      if (err instanceof ErrFileCalculatedControlEquality && err.line === undefined) {
-        const controlLine = this.isADV() ? this.advControl.lineNumber : this.control.lineNumber;
-        err.line = controlLine;
-        const positions = this.isADV() ? advFileControlFieldPositions : fileControlFieldPositions;
-        const pos = positions[err.field];
-        if (pos) {
-          err.startColumn = pos.start;
-          err.endColumn = pos.end;
-        } else {
-          // Full-line fallback for structural errors without a specific field
-          err.startColumn = 0;
-          err.endColumn = 94;
-        }
-
-        // Add relatedLocation pointing to the file header
-        if (this.header.lineNumber) {
-          const headerPos = fileHeaderFieldPositions[err.field];
-          if (headerPos) {
-            err.relatedLocations = [{
-              line: this.header.lineNumber,
-              startColumn: headerPos.start,
-              endColumn: headerPos.end,
-              message: `calculated value: ${err.calculatedValue}`,
-            }];
-          }
-        }
-      }
-
-      if (err instanceof ErrFileBatchNumberAscending && err.startColumn === undefined) {
-        // Full-line highlight on the offending batch header
-        err.startColumn = 0;
-        err.endColumn = 94;
-      }
+      this.enrichFileError(err);
     }
 
     return errors;
+  }
+
+  /** Enrich a single file-level error with positional data. */
+  private enrichFileError(err: Error): void {
+    if (err instanceof ErrFileCalculatedControlEquality && err.line === undefined) {
+      const controlLine = this.isADV() ? this.advControl.lineNumber : this.control.lineNumber;
+      err.line = controlLine;
+      const positions = this.isADV() ? advFileControlFieldPositions : fileControlFieldPositions;
+      const pos = positions[err.field];
+      if (pos) {
+        err.startColumn = pos.start;
+        err.endColumn = pos.end;
+      } else {
+        err.startColumn = 0;
+        err.endColumn = 94;
+      }
+      if (this.header.lineNumber) {
+        const headerPos = fileHeaderFieldPositions[err.field];
+        if (headerPos) {
+          err.relatedLocations = [{
+            line: this.header.lineNumber,
+            startColumn: headerPos.start,
+            endColumn: headerPos.end,
+            message: `calculated value: ${err.calculatedValue}`,
+          }];
+        }
+      }
+    }
+    if (err instanceof ErrFileBatchNumberAscending && err.startColumn === undefined) {
+      err.startColumn = 0;
+      err.endColumn = 94;
+    }
   }
 
   // --- ValidateTotals ---
@@ -685,19 +691,30 @@ export class File {
   toJSON(): object {
     const obj: Record<string, unknown> = {
       id: this.id,
-      fileHeader: this.header,
-      batches: this.batches.map(b => ({
-        batchHeader: b.getHeader(),
-        entries: b.getEntries(),
-        batchControl: b.getControl(),
-      })),
+      fileHeader: goRemapKeys(this.header),
+      batches: this.batches.map(b => {
+        const batch: Record<string, unknown> = {
+          batchHeader: goRemapKeys(b.getHeader()),
+          entryDetails: goRemapKeys(b.getEntries()),
+          batchControl: goRemapKeys(b.getControl()),
+        };
+        const advEntries = b.getADVEntries();
+        if (advEntries && advEntries.length > 0) {
+          batch.advEntryDetails = goRemapKeys(advEntries);
+        }
+        const advControl = b.getADVControl();
+        if (advControl && advControl.serviceClassCode !== 0) {
+          batch.advBatchControl = goRemapKeys(advControl);
+        }
+        return batch;
+      }),
       IATBatches: this.iatBatches.map(ib => ({
-        IATBatchHeader: ib.header,
-        IATEntries: ib.entries,
-        batchControl: ib.control,
+        IATBatchHeader: goRemapKeys(ib.header),
+        IATEntryDetails: goRemapKeys(ib.entries),
+        batchControl: goRemapKeys(ib.control),
       })),
-      fileControl: this.control,
-      fileADVControl: this.advControl,
+      fileControl: goRemapKeys(this.control, reverseFileControlKeyMap),
+      fileADVControl: goRemapKeys(this.advControl, reverseFileControlKeyMap),
       NotificationOfChange: this.notificationOfChange,
       ReturnEntries: this.returnEntries,
     };
@@ -1013,6 +1030,62 @@ const fileControlKeyMap: Record<string, string> = {
   totalDebit: 'totalDebitEntryDollarAmountInFile',
   totalCredit: 'totalCreditEntryDollarAmountInFile',
 };
+
+// --- Reverse key maps (TypeScript property names → Go JSON tags) for toJSON() ---
+
+// Inverted from jsonKeyMap. Maps TS camelCase property names back to Go JSON tag names.
+const reverseJsonKeyMap: Record<string, string> = {
+  odfiIdentification: 'ODFIIdentification',
+  rdfiIdentification: 'RDFIIdentification',
+  dfiAccountNumber: 'DFIAccountNumber',
+  addendaRecords: 'AddendaRecords',
+  ofacScreeningIndicator: 'OFACScreeningIndicator',
+  secondaryOFACScreeningIndicator: 'SecondaryOFACScreeningIndicator',
+  totalDebitEntryDollarAmount: 'totalDebit',
+  totalCreditEntryDollarAmount: 'totalCredit',
+  messageAuthenticationCode: 'messageAuthentication',
+  isoDestinationCountryCode: 'ISODestinationCountryCode',
+  isoOriginatingCurrencyCode: 'ISOOriginatingCurrencyCode',
+  isoDestinationCurrencyCode: 'ISODestinationCurrencyCode',
+  iatIndicator: 'IATIndicator',
+  odfiName: 'ODFIName',
+  odfiIDNumberQualifier: 'ODFIIDNumberQualifier',
+  odfiBranchCountryCode: 'ODFIBranchCountryCode',
+  rdfiName: 'RDFIName',
+  rdfiIDNumberQualifier: 'RDFIIDNumberQualifier',
+  rdfiBranchCountryCode: 'RDFIBranchCountryCode',
+};
+
+const reverseFileControlKeyMap: Record<string, string> = {
+  totalDebitEntryDollarAmountInFile: 'totalDebit',
+  totalCreditEntryDollarAmountInFile: 'totalCredit',
+};
+
+// Recursively remap TS property names to Go JSON tag names for serialization.
+function goRemapKeys(
+  obj: unknown,
+  extraMap?: Record<string, string>,
+): unknown {
+  if (obj == null) return obj;
+  if (Array.isArray(obj)) {
+    return obj.map((item) => goRemapKeys(item, extraMap));
+  }
+  if (typeof obj !== 'object') return obj;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+    // Skip internal fields that should not appear in JSON
+    if (k === 'validators' || k === 'converters' || k === 'validateOpts') continue;
+    const mapped = extraMap?.[k] ?? reverseJsonKeyMap[k] ?? k;
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      out[mapped] = goRemapKeys(v, extraMap);
+    } else if (Array.isArray(v)) {
+      out[mapped] = v.map((item) => goRemapKeys(item, extraMap));
+    } else {
+      out[mapped] = v;
+    }
+  }
+  return out;
+}
 
 function remapKeys(
   obj: Record<string, unknown>,

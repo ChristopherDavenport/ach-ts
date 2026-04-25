@@ -18,22 +18,22 @@ import { newBatch } from './batch.js';
 import { IATBatch } from './iatBatch.js';
 import { IATBatchHeader } from './iatBatchHeader.js';
 import { IATEntryDetail } from './iatEntryDetail.js';
-import { newAddenda02 } from './addenda02.js';
-import { newAddenda05 } from './addenda05.js';
-import { newAddenda10 } from './addenda10.js';
-import { newAddenda11 } from './addenda11.js';
-import { newAddenda12 } from './addenda12.js';
-import { newAddenda13 } from './addenda13.js';
-import { newAddenda14 } from './addenda14.js';
-import { newAddenda15 } from './addenda15.js';
-import { newAddenda16 } from './addenda16.js';
-import { newAddenda17 } from './addenda17.js';
-import { newAddenda18 } from './addenda18.js';
-import { newAddenda98, isRefusedChangeCode } from './addenda98.js';
-import { newAddenda98Refused } from './addenda98Refused.js';
-import { newAddenda99 } from './addenda99.js';
-import { newAddenda99Dishonored, isDishonoredReturnCode } from './addenda99Dishonored.js';
-import { newAddenda99Contested, isContestedReturnCode } from './addenda99Contested.js';
+import { newAddenda02 } from './addenda/addenda02.js';
+import { newAddenda05 } from './addenda/addenda05.js';
+import { newAddenda10 } from './addenda/addenda10.js';
+import { newAddenda11 } from './addenda/addenda11.js';
+import { newAddenda12 } from './addenda/addenda12.js';
+import { newAddenda13 } from './addenda/addenda13.js';
+import { newAddenda14 } from './addenda/addenda14.js';
+import { newAddenda15 } from './addenda/addenda15.js';
+import { newAddenda16 } from './addenda/addenda16.js';
+import { newAddenda17 } from './addenda/addenda17.js';
+import { newAddenda18 } from './addenda/addenda18.js';
+import { newAddenda98, isRefusedChangeCode } from './addenda/addenda98.js';
+import { newAddenda98Refused } from './addenda/addenda98Refused.js';
+import { newAddenda99 } from './addenda/addenda99.js';
+import { newAddenda99Dishonored, isDishonoredReturnCode } from './addenda/addenda99Dishonored.js';
+import { newAddenda99Contested, isContestedReturnCode } from './addenda/addenda99Contested.js';
 import {
   ParseError,
   ACHError,

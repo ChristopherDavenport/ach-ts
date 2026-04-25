@@ -166,3 +166,6 @@ export class Converters {
     return v % Math.pow(10, maxDigits);
   }
 }
+
+/** Shared singleton instance — Converters is stateless. */
+export const converters = new Converters();

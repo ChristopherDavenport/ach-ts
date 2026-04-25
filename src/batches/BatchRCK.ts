@@ -65,6 +65,12 @@ export class BatchRCK extends Batch {
     if (err) return err;
     return this.validate();
   }
+
+  static from(b: Batch): BatchRCK {
+    const inst = new BatchRCK();
+    Batch.copyFrom(b, inst);
+    return inst;
+  }
 }
 
-registerBatchType(RCK, (b: Batch) => Object.setPrototypeOf(b, BatchRCK.prototype) as BatchRCK);
+registerBatchType(RCK, (b: Batch) => BatchRCK.from(b));

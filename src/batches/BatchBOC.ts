@@ -59,6 +59,12 @@ export class BatchBOC extends Batch {
     if (err) return err;
     return this.validate();
   }
+
+  static from(b: Batch): BatchBOC {
+    const inst = new BatchBOC();
+    Batch.copyFrom(b, inst);
+    return inst;
+  }
 }
 
-registerBatchType(BOC, (b: Batch) => Object.setPrototypeOf(b, BatchBOC.prototype) as BatchBOC);
+registerBatchType(BOC, (b: Batch) => BatchBOC.from(b));

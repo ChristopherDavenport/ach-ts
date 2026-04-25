@@ -47,6 +47,12 @@ export class BatchWEB extends Batch {
     if (err) return err;
     return this.validate();
   }
+
+  static from(b: Batch): BatchWEB {
+    const inst = new BatchWEB();
+    Batch.copyFrom(b, inst);
+    return inst;
+  }
 }
 
-registerBatchType(WEB, (b: Batch) => Object.setPrototypeOf(b, BatchWEB.prototype) as BatchWEB);
+registerBatchType(WEB, (b: Batch) => BatchWEB.from(b));

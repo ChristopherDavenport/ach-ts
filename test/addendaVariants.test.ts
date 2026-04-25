@@ -5,8 +5,8 @@ import {
   Addenda99Contested,
   lookupChangeCode,
 } from '../src/index.js';
-import { isDishonoredReturnCode } from '../src/addenda99Dishonored.js';
-import { isContestedReturnCode } from '../src/addenda99Contested.js';
+import { isDishonoredReturnCode } from '../src/addenda/addenda99Dishonored.js';
+import { isContestedReturnCode } from '../src/addenda/addenda99Contested.js';
 
 // =========================================================================
 // Addenda98Refused Tests

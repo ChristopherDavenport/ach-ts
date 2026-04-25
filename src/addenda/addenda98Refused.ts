@@ -1,6 +1,6 @@
-import { entryAddendaPos } from './constants.js';
-import { enrichErrors, addenda98RefusedFieldPositions } from './fieldPositions.js';
-import { Converters } from './utils/converters.js';
+import { entryAddendaPos } from '../constants.js';
+import { enrichErrors, enrichError, addenda98RefusedFieldPositions } from '../fieldPositions.js';
+import { Converters, converters } from '../utils/converters.js';
 import { lookupChangeCode, type ChangeCode } from './addenda98.js';
 import {
   fieldError,
@@ -10,7 +10,7 @@ import {
   ErrAddenda98ChangeCode,
   ErrAddenda98CorrectedData,
   ErrAddenda98RefusedTraceSequenceNumber,
-} from './errors/index.js';
+} from '../errors/index.js';
 
 /**
  * Addenda98Refused is used when an RDFI refuses a Notification of Change (NOC).
@@ -26,9 +26,6 @@ export class Addenda98Refused {
   traceSequenceNumber = '';
   traceNumber = '';
   lineNumber = 0;
-
-  private converters = new Converters();
-
   parse(record: string): void {
     const runes = [...record];
     if (runes.length !== 94) return;
@@ -42,7 +39,7 @@ export class Addenda98Refused {
     this.originalTrace = runes.slice(6, 21).join('').trim();
     // 22-27 Reserved
     // 28-35 OriginalDFI
-    this.originalDFI = this.converters.parseStringField(runes.slice(27, 35).join(''));
+    this.originalDFI = converters.parseStringField(runes.slice(27, 35).join(''));
     // 36-64 CorrectedData
     this.correctedData = runes.slice(35, 64).join('').trim();
     // 65-67 ChangeCode
@@ -71,6 +68,12 @@ export class Addenda98Refused {
   }
 
   validate(): Error | null {
+    const err = this._validate();
+    if (err) enrichError(err, this.lineNumber, addenda98RefusedFieldPositions);
+    return err;
+  }
+
+  private _validate(): Error | null {
     if (this.typeCode === '') return fieldError('TypeCode', ErrConstructor, this.typeCode);
     if (this.typeCode !== '98') return fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode);
 
@@ -107,11 +110,11 @@ export class Addenda98Refused {
   refusedChangeCodeField(): ChangeCode | null { return lookupChangeCode(this.refusedChangeCode); }
   changeCodeField(): ChangeCode | null { return lookupChangeCode(this.changeCode); }
 
-  originalTraceField(): string { return this.converters.stringField(this.originalTrace, 15); }
-  originalDFIField(): string { return this.converters.stringField(this.originalDFI, 8); }
-  correctedDataField(): string { return this.converters.alphaField(this.correctedData, 29); }
-  traceSequenceNumberField(): string { return this.converters.stringField(this.traceSequenceNumber, 7); }
-  traceNumberField(): string { return this.converters.stringField(this.traceNumber, 15); }
+  originalTraceField(): string { return converters.stringField(this.originalTrace, 15); }
+  originalDFIField(): string { return converters.stringField(this.originalDFI, 8); }
+  correctedDataField(): string { return converters.alphaField(this.correctedData, 29); }
+  traceSequenceNumberField(): string { return converters.stringField(this.traceSequenceNumber, 7); }
+  traceNumberField(): string { return converters.stringField(this.traceNumber, 15); }
 }
 
 export function newAddenda98Refused(): Addenda98Refused { return new Addenda98Refused(); }

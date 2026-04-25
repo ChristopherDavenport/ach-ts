@@ -2,8 +2,8 @@ import { IATBatchHeader } from './iatBatchHeader.js';
 import { IATEntryDetail } from './iatEntryDetail.js';
 import { BatchControl, newBatchControl } from './batchControl.js';
 import type { ValidateOpts } from './validateOpts.js';
-import { Converters } from './utils/converters.js';
-import { Validators } from './utils/validators.js';
+import { Converters, converters } from './utils/converters.js';
+import { Validators, validators } from './utils/validators.js';
 import {
   AutomatedAccountingAdvices,
   CategoryForward, CategoryReturn, CategoryNOC,
@@ -80,9 +80,6 @@ export class IATBatch {
   entries: IATEntryDetail[] = [];
   control: BatchControl;
   category = '';
-
-  protected converters = new Converters();
-  protected validators = new Validators();
   validateOpts?: ValidateOpts;
 
   constructor(header?: IATBatchHeader) {
@@ -141,7 +138,7 @@ export class IATBatch {
         new ErrBatchHeaderControlEquality(this.header.batchNumber, this.control.batchNumber));
     }
     if (!this.validateOpts?.allowSpecialCharacters) {
-      const err = this.validators.isAlphanumeric(this.control.companyIdentification);
+      const err = validators.isAlphanumeric(this.control.companyIdentification);
       if (err) return fieldError('CompanyIdentification', err, this.control.companyIdentification);
     }
     if (!this.validateOpts?.customTraceNumbers) {
@@ -185,7 +182,7 @@ export class IATBatch {
         new ErrBatchHeaderControlEquality(this.header.batchNumber, this.control.batchNumber)));
     }
     if (!this.validateOpts?.allowSpecialCharacters) {
-      push(fieldError('CompanyIdentification', this.validators.isAlphanumeric(this.control.companyIdentification), this.control.companyIdentification));
+      push(fieldError('CompanyIdentification', validators.isAlphanumeric(this.control.companyIdentification), this.control.companyIdentification));
     }
     if (!this.validateOpts?.customTraceNumbers) {
       push(this.isSequenceAscending());
@@ -250,7 +247,7 @@ export class IATBatch {
         }
       }
 
-      const edSeqNum = this.converters.parseNumField(this.entries[i].traceNumberField().substring(8));
+      const edSeqNum = converters.parseNumField(this.entries[i].traceNumberField().substring(8));
       if (entry.addenda10) entry.addenda10.entryDetailSequenceNumber = edSeqNum;
       if (entry.addenda11) entry.addenda11.entryDetailSequenceNumber = edSeqNum;
       if (entry.addenda12) entry.addenda12.entryDetailSequenceNumber = edSeqNum;
@@ -541,7 +538,7 @@ export class IATBatch {
     for (const entry of this.entries) {
       hash += parseInt(aba8(entry.rdfiIdentification), 10) || 0;
     }
-    return this.converters.leastSignificantDigits(hash, 10);
+    return converters.leastSignificantDigits(hash, 10);
   }
 
   private isTraceNumberODFI(): Error | null {

@@ -57,6 +57,12 @@ export class BatchMTE extends Batch {
     if (err) return err;
     return this.validate();
   }
+
+  static from(b: Batch): BatchMTE {
+    const inst = new BatchMTE();
+    Batch.copyFrom(b, inst);
+    return inst;
+  }
 }
 
-registerBatchType(MTE, (b: Batch) => Object.setPrototypeOf(b, BatchMTE.prototype) as BatchMTE);
+registerBatchType(MTE, (b: Batch) => BatchMTE.from(b));

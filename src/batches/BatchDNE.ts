@@ -55,6 +55,12 @@ export class BatchDNE extends Batch {
     if (err) return err;
     return this.validate();
   }
+
+  static from(b: Batch): BatchDNE {
+    const inst = new BatchDNE();
+    Batch.copyFrom(b, inst);
+    return inst;
+  }
 }
 
-registerBatchType(DNE, (b: Batch) => Object.setPrototypeOf(b, BatchDNE.prototype) as BatchDNE);
+registerBatchType(DNE, (b: Batch) => BatchDNE.from(b));

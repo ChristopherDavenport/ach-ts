@@ -1,6 +1,7 @@
 import { entryAddendaPos } from '../constants.js';
 import { enrichErrors, enrichError, addenda15FieldPositions } from '../fieldPositions.js';
 import type { ValidateOpts } from '../validateOpts.js';
+import { isSkipped, applyErrorLevel, applyErrorLevels } from '../validateOpts.js';
 import { Converters, converters } from '../utils/converters.js';
 import { Validators, validators } from '../utils/validators.js';
 import {
@@ -46,8 +47,9 @@ export class Addenda15 {
   }
 
   validate(): Error | null {
-    const err = this._validate();
+    let err = this._validate();
     if (err) enrichError(err, this.lineNumber, addenda15FieldPositions);
+    err = applyErrorLevel(err, this.validateOpts);
     return err;
   }
 
@@ -57,7 +59,7 @@ export class Addenda15 {
 
     if (this.typeCode !== '15') return fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode);
 
-    if (!this.validateOpts?.allowSpecialCharacters) {
+    if (!isSkipped(this.validateOpts, 'allowSpecialCharacters')) {
       const idErr = validators.isAlphanumeric(this.receiverIDNumber);
       if (idErr) return fieldError('ReceiverIDNumber', idErr, this.receiverIDNumber);
       const addrErr = validators.isAlphanumeric(this.receiverStreetAddress);
@@ -76,12 +78,15 @@ export class Addenda15 {
     if (this.entryDetailSequenceNumber < 0) push(fieldError('EntryDetailSequenceNumber', ErrConstructor, this.entryDetailSequenceNumberField()));
 
     if (this.typeCode !== '15') push(fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode));
-    if (!this.validateOpts?.allowSpecialCharacters) {
+    if (!isSkipped(this.validateOpts, 'allowSpecialCharacters')) {
       push(fieldError('ReceiverIDNumber', validators.isAlphanumeric(this.receiverIDNumber), this.receiverIDNumber));
       push(fieldError('ReceiverStreetAddress', validators.isAlphanumeric(this.receiverStreetAddress), this.receiverStreetAddress));
     }
 
-    return enrichErrors(errors, this.lineNumber, addenda15FieldPositions);
+    return applyErrorLevels(
+      enrichErrors(errors, this.lineNumber, addenda15FieldPositions),
+      this.validateOpts,
+    );
   }
 
   private fieldInclusion(): Error | null {

@@ -1,6 +1,7 @@
 import { batchHeaderPos } from './constants.js';
 import { enrichErrors, enrichError, batchHeaderFieldPositions } from './fieldPositions.js';
 import type { ValidateOpts } from './validateOpts.js';
+import { isSkipped, applyErrorLevel, applyErrorLevels } from './validateOpts.js';
 import { Converters, converters } from './utils/converters.js';
 import { Validators, validators } from './utils/validators.js';
 import {
@@ -102,8 +103,9 @@ export class BatchHeader {
 
   /** Validate performs NACHA format rule checks */
   validate(): Error | null {
-    const err = this._validate();
+    let err = this._validate();
     if (err) enrichError(err, this.lineNumber, batchHeaderFieldPositions);
+    err = applyErrorLevel(err, this.validateOpts);
     return err;
   }
 
@@ -114,7 +116,7 @@ export class BatchHeader {
     if (validators.isServiceClass(this.serviceClassCode)) {
       return fieldError('ServiceClassCode', ErrServiceClass, this.serviceClassCode);
     }
-    if (!this.validateOpts?.skipBatchHeaderCompanyValidation) {
+    if (!isSkipped(this.validateOpts, 'skipBatchHeaderCompanyValidation')) {
       if (validators.isSECCode(this.standardEntryClassCode)) {
         return fieldError('StandardEntryClassCode', ErrSECCode, this.standardEntryClassCode);
       }
@@ -122,7 +124,7 @@ export class BatchHeader {
     if (validators.isOriginatorStatusCode(this.originatorStatusCode)) {
       return fieldError('OriginatorStatusCode', ErrOrigStatusCode, this.originatorStatusCode);
     }
-    if (!this.validateOpts?.allowSpecialCharacters) {
+    if (!isSkipped(this.validateOpts, 'allowSpecialCharacters')) {
       const nameErr = validators.isAlphanumeric(this.companyName);
       if (nameErr) return fieldError('CompanyName', nameErr, this.companyName);
 
@@ -144,7 +146,7 @@ export class BatchHeader {
     const push = (err: Error | null | undefined) => { if (err) errors.push(err); };
 
     // Field inclusion checks (inlined to collect all)
-    if (!this.validateOpts?.skipBatchHeaderCompanyValidation) {
+    if (!isSkipped(this.validateOpts, 'skipBatchHeaderCompanyValidation')) {
       if (this.serviceClassCode === 0) push(fieldError('ServiceClassCode', ErrConstructor, this.serviceClassCodeField()));
       if (this.standardEntryClassCode === '') push(fieldError('StandardEntryClassCode', ErrConstructor, this.standardEntryClassCode));
       if (this.companyName === '') push(fieldError('CompanyName', ErrConstructor, this.companyNameField()));
@@ -155,7 +157,7 @@ export class BatchHeader {
     if (validators.isServiceClass(this.serviceClassCode)) {
       push(fieldError('ServiceClassCode', ErrServiceClass, this.serviceClassCode));
     }
-    if (!this.validateOpts?.skipBatchHeaderCompanyValidation) {
+    if (!isSkipped(this.validateOpts, 'skipBatchHeaderCompanyValidation')) {
       if (validators.isSECCode(this.standardEntryClassCode)) {
         push(fieldError('StandardEntryClassCode', ErrSECCode, this.standardEntryClassCode));
       }
@@ -163,18 +165,21 @@ export class BatchHeader {
     if (validators.isOriginatorStatusCode(this.originatorStatusCode)) {
       push(fieldError('OriginatorStatusCode', ErrOrigStatusCode, this.originatorStatusCode));
     }
-    if (!this.validateOpts?.allowSpecialCharacters) {
+    if (!isSkipped(this.validateOpts, 'allowSpecialCharacters')) {
       push(fieldError('CompanyName', validators.isAlphanumeric(this.companyName), this.companyName));
       push(fieldError('CompanyDiscretionaryData', validators.isAlphanumeric(this.companyDiscretionaryData), this.companyDiscretionaryData));
       push(fieldError('CompanyEntryDescription', validators.isAlphanumeric(this.companyEntryDescription), this.companyEntryDescription));
       push(fieldError('CompanyIdentification', validators.isAlphanumeric(this.companyIdentification), this.companyIdentification));
     }
 
-    return enrichErrors(errors, this.lineNumber, batchHeaderFieldPositions);
+    return applyErrorLevels(
+      enrichErrors(errors, this.lineNumber, batchHeaderFieldPositions),
+      this.validateOpts,
+    );
   }
 
   private fieldInclusion(): Error | null {
-    if (this.validateOpts?.skipBatchHeaderCompanyValidation) return null;
+    if (isSkipped(this.validateOpts, 'skipBatchHeaderCompanyValidation')) return null;
 
     if (this.serviceClassCode === 0) {
       return fieldError('ServiceClassCode', ErrConstructor, this.serviceClassCodeField());

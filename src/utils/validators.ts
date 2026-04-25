@@ -234,7 +234,9 @@ export class Validators {
       if (r === 0x20 || (0x30 <= r && r <= 0x39) || (0x41 <= r && r <= 0x5A)) {
         continue; // Space, 0-9, A-Z
       }
-      return new ACHError(`${ErrUpperAlpha.message}: ${ch}`);
+      const achErr = new ACHError(`${ErrUpperAlpha.message}: ${ch}`);
+      achErr.code = ErrUpperAlpha.code;
+      return achErr;
     }
     return null;
   }
@@ -261,7 +263,9 @@ export class Validators {
           continue;
       }
 
-      return new ACHError(`${ErrNonAlphanumeric.message}: ${ch}`);
+      const achErr = new ACHError(`${ErrNonAlphanumeric.message}: ${ch}`);
+      achErr.code = ErrNonAlphanumeric.code;
+      return achErr;
     }
     return null;
   }

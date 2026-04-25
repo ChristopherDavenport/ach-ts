@@ -1,6 +1,7 @@
 import { batchHeaderPos } from './constants.js';
 import { enrichErrors, enrichError, iatBatchHeaderFieldPositions } from './fieldPositions.js';
 import type { ValidateOpts } from './validateOpts.js';
+import { isSkipped, applyErrorLevel, applyErrorLevels } from './validateOpts.js';
 import { Converters, converters } from './utils/converters.js';
 import { Validators, validators } from './utils/validators.js';
 import {
@@ -121,8 +122,9 @@ export class IATBatchHeader {
   }
 
   validate(): Error | null {
-    const err = this._validate();
+    let err = this._validate();
     if (err) enrichError(err, this.lineNumber, iatBatchHeaderFieldPositions);
+    err = applyErrorLevel(err, this.validateOpts);
     return err;
   }
 
@@ -145,7 +147,7 @@ export class IATBatchHeader {
     if (validators.isSECCode(this.standardEntryClassCode)) {
       return fieldError('StandardEntryClassCode', validators.isSECCode(this.standardEntryClassCode)!, this.standardEntryClassCode);
     }
-    if (!this.validateOpts?.allowSpecialCharacters) {
+    if (!isSkipped(this.validateOpts, 'allowSpecialCharacters')) {
       if (validators.isAlphanumeric(this.companyEntryDescription)) {
         return fieldError('CompanyEntryDescription', validators.isAlphanumeric(this.companyEntryDescription)!, this.companyEntryDescription);
       }
@@ -186,14 +188,17 @@ export class IATBatchHeader {
     push(fieldError('ForeignExchangeReferenceIndicator', this.isForeignExchangeReferenceIndicator(), String(this.foreignExchangeReferenceIndicator)));
     if (!isValidISO3166(this.isoDestinationCountryCode)) push(fieldError('ISODestinationCountryCode', ErrValidISO3166, this.isoDestinationCountryCode));
     push(fieldError('StandardEntryClassCode', validators.isSECCode(this.standardEntryClassCode), this.standardEntryClassCode));
-    if (!this.validateOpts?.allowSpecialCharacters) {
+    if (!isSkipped(this.validateOpts, 'allowSpecialCharacters')) {
       push(fieldError('CompanyEntryDescription', validators.isAlphanumeric(this.companyEntryDescription), this.companyEntryDescription));
     }
     if (!isValidISO4217(this.isoOriginatingCurrencyCode)) push(fieldError('ISOOriginatingCurrencyCode', ErrValidISO4217, this.isoOriginatingCurrencyCode));
     if (!isValidISO4217(this.isoDestinationCurrencyCode)) push(fieldError('ISODestinationCurrencyCode', ErrValidISO4217, this.isoDestinationCurrencyCode));
     push(fieldError('OriginatorStatusCode', validators.isOriginatorStatusCode(this.originatorStatusCode), String(this.originatorStatusCode)));
 
-    return enrichErrors(errors, this.lineNumber, iatBatchHeaderFieldPositions);
+    return applyErrorLevels(
+      enrichErrors(errors, this.lineNumber, iatBatchHeaderFieldPositions),
+      this.validateOpts,
+    );
   }
 
   private isForeignExchangeIndicator(): Error | null {

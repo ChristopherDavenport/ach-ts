@@ -2,6 +2,7 @@ import { IATBatchHeader } from './iatBatchHeader.js';
 import { IATEntryDetail } from './iatEntryDetail.js';
 import { BatchControl, newBatchControl } from './batchControl.js';
 import type { ValidateOpts } from './validateOpts.js';
+import { isSkipped, applyErrorLevel, applyErrorLevels } from './validateOpts.js';
 import { Converters, converters } from './utils/converters.js';
 import { Validators, validators } from './utils/validators.js';
 import {
@@ -123,7 +124,7 @@ export class IATBatch {
     const fiErr = this.isFieldInclusion();
     if (fiErr) return this.error('FieldError', fiErr);
 
-    if (!this.validateOpts?.unequalServiceClassCode) {
+    if (!isSkipped(this.validateOpts, 'unequalServiceClassCode')) {
       if (this.header.serviceClassCode !== this.control.serviceClassCode) {
         return this.error('ServiceClassCode',
           new ErrBatchHeaderControlEquality(this.header.serviceClassCode, this.control.serviceClassCode));
@@ -137,17 +138,17 @@ export class IATBatch {
       return this.error('BatchNumber',
         new ErrBatchHeaderControlEquality(this.header.batchNumber, this.control.batchNumber));
     }
-    if (!this.validateOpts?.allowSpecialCharacters) {
+    if (!isSkipped(this.validateOpts, 'allowSpecialCharacters')) {
       const err = validators.isAlphanumeric(this.control.companyIdentification);
       if (err) return fieldError('CompanyIdentification', err, this.control.companyIdentification);
     }
-    if (!this.validateOpts?.customTraceNumbers) {
+    if (!isSkipped(this.validateOpts, 'customTraceNumbers')) {
       const err = this.isSequenceAscending();
       if (err) return err;
     }
     const totErr = this.validateTotals();
     if (totErr) return totErr;
-    if (!this.validateOpts?.customTraceNumbers) {
+    if (!isSkipped(this.validateOpts, 'customTraceNumbers')) {
       let err = this.isTraceNumberODFI();
       if (err) return err;
       err = this.isAddendaSequence();
@@ -167,7 +168,7 @@ export class IATBatch {
     }
     errors.push(...this.isFieldInclusionAll());
 
-    if (!this.validateOpts?.unequalServiceClassCode) {
+    if (!isSkipped(this.validateOpts, 'unequalServiceClassCode')) {
       if (this.header.serviceClassCode !== this.control.serviceClassCode) {
         push(this.error('ServiceClassCode',
           new ErrBatchHeaderControlEquality(this.header.serviceClassCode, this.control.serviceClassCode)));
@@ -181,14 +182,14 @@ export class IATBatch {
       push(this.error('BatchNumber',
         new ErrBatchHeaderControlEquality(this.header.batchNumber, this.control.batchNumber)));
     }
-    if (!this.validateOpts?.allowSpecialCharacters) {
+    if (!isSkipped(this.validateOpts, 'allowSpecialCharacters')) {
       push(fieldError('CompanyIdentification', validators.isAlphanumeric(this.control.companyIdentification), this.control.companyIdentification));
     }
-    if (!this.validateOpts?.customTraceNumbers) {
+    if (!isSkipped(this.validateOpts, 'customTraceNumbers')) {
       push(this.isSequenceAscending());
     }
     errors.push(...this.validateAllTotals());
-    if (!this.validateOpts?.customTraceNumbers) {
+    if (!isSkipped(this.validateOpts, 'customTraceNumbers')) {
       push(this.isTraceNumberODFI());
       push(this.isAddendaSequence());
     }
@@ -288,9 +289,9 @@ export class IATBatch {
   }
 
   validate(): Error | null {
-    if (this.validateOpts?.skipAll || this.validateOpts?.bypassBatchValidation) return null;
+    if (isSkipped(this.validateOpts, 'skipAll') || isSkipped(this.validateOpts, 'bypassBatchValidation')) return null;
     const err = this.verify();
-    if (err) return err;
+    if (err) return applyErrorLevel(err, this.validateOpts);
 
     for (const entry of this.entries) {
       if (entry.addenda17.length > 2) {
@@ -318,7 +319,7 @@ export class IATBatch {
   }
 
   validateAll(): Error[] {
-    if (this.validateOpts?.skipAll || this.validateOpts?.bypassBatchValidation) return [];
+    if (isSkipped(this.validateOpts, 'skipAll') || isSkipped(this.validateOpts, 'bypassBatchValidation')) return [];
     const errors = this.verifyAll();
 
     for (const entry of this.entries) {
@@ -343,7 +344,7 @@ export class IATBatch {
         }
       }
     }
-    return errors;
+    return applyErrorLevels(errors, this.validateOpts);
   }
 
   create(): Error | null {
@@ -512,7 +513,7 @@ export class IATBatch {
   private isBatchEntryCount(): [number, Error | null] {
     const count = this.countEntryAddenda();
     if (count !== this.control.entryAddendaCount) {
-      if (this.validateOpts?.unequalAddendaCounts) return [count, null];
+      if (isSkipped(this.validateOpts, 'unequalAddendaCounts')) return [count, null];
       return [count, this.error('EntryAddendaCount',
         new ErrBatchCalculatedControlEquality(count, this.control.entryAddendaCount))];
     }
@@ -570,7 +571,7 @@ export class IATBatch {
   }
 
   private isTraceNumberODFI(): Error | null {
-    if (this.validateOpts?.bypassOriginValidation) return null;
+    if (isSkipped(this.validateOpts, 'bypassOriginValidation')) return null;
     for (const entry of this.entries) {
       if (this.header.odfiIdentificationField() !== entry.traceNumberField().substring(0, 8)) {
         return this.error('ODFIIdentificationField',

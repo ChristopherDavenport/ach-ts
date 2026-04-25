@@ -1,6 +1,7 @@
 import { entryDetailPos, CategoryForward } from './constants.js';
 import { enrichErrors, enrichError, advEntryDetailFieldPositions } from './fieldPositions.js';
 import type { ValidateOpts } from './validateOpts.js';
+import { isSkipped, applyErrorLevel, applyErrorLevels } from './validateOpts.js';
 import { Converters, converters } from './utils/converters.js';
 import { Validators, validators, CalculateCheckDigit } from './utils/validators.js';
 import {
@@ -97,8 +98,9 @@ export class ADVEntryDetail {
   }
 
   validate(): Error | null {
-    const err = this._validate();
+    let err = this._validate();
     if (err) enrichError(err, this.lineNumber, advEntryDetailFieldPositions);
+    err = applyErrorLevel(err, this.validateOpts);
     return err;
   }
 
@@ -110,7 +112,7 @@ export class ADVEntryDetail {
       return fieldError('TransactionCode', new Error('invalid transaction code'), String(this.transactionCode));
     }
 
-    if (!this.validateOpts?.allowSpecialCharacters) {
+    if (!isSkipped(this.validateOpts, 'allowSpecialCharacters')) {
       for (const [name, val] of [
         ['DFIAccountNumber', this.dfiAccountNumber],
         ['AdviceRoutingNumber', this.adviceRoutingNumber],
@@ -150,7 +152,7 @@ export class ADVEntryDetail {
     if (validators.isTransactionCode(this.transactionCode)) {
       push(fieldError('TransactionCode', new Error('invalid transaction code'), String(this.transactionCode)));
     }
-    if (!this.validateOpts?.allowSpecialCharacters) {
+    if (!isSkipped(this.validateOpts, 'allowSpecialCharacters')) {
       for (const [name, val] of [
         ['DFIAccountNumber', this.dfiAccountNumber],
         ['AdviceRoutingNumber', this.adviceRoutingNumber],
@@ -167,7 +169,10 @@ export class ADVEntryDetail {
       push(fieldError('RDFIIdentification', new ErrValidCheckDigit(calculated), this.checkDigit));
     }
 
-    return enrichErrors(errors, this.lineNumber, advEntryDetailFieldPositions);
+    return applyErrorLevels(
+      enrichErrors(errors, this.lineNumber, advEntryDetailFieldPositions),
+      this.validateOpts,
+    );
   }
 
   private fieldInclusion(): Error | null {

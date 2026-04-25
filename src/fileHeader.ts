@@ -18,6 +18,7 @@
 import { fileHeaderPos } from './constants.js';
 import { enrichErrors, enrichError, fileHeaderFieldPositions } from './fieldPositions.js';
 import type { ValidateOpts } from './validateOpts.js';
+import { isSkipped, applyErrorLevel, applyErrorLevels } from './validateOpts.js';
 import { Converters, converters } from './utils/converters.js';
 import { Validators, validators, CheckRoutingNumber } from './utils/validators.js';
 import {
@@ -152,8 +153,9 @@ export class FileHeader {
 
   /** Validate performs NACHA format rule checks */
   validate(): Error | null {
-    const err = this.validateWith(this.validateOpts);
+    let err = this.validateWith(this.validateOpts);
     if (err) enrichError(err, this.lineNumber, fileHeaderFieldPositions);
+    err = applyErrorLevel(err, this.validateOpts);
     return err;
   }
 
@@ -183,7 +185,7 @@ export class FileHeader {
     }
 
     // ImmediateOrigin validation
-    if (!opts.bypassOriginValidation) {
+    if (!isSkipped(opts, 'bypassOriginValidation')) {
       if (this.immediateOrigin === '000000000' || this.immediateOrigin === '0000000000') {
         return fieldError('ImmediateOrigin', ErrConstructor, this.immediateOrigin);
       }
@@ -194,7 +196,7 @@ export class FileHeader {
     }
 
     // ImmediateDestination validation
-    if (!opts.bypassDestinationValidation) {
+    if (!isSkipped(opts, 'bypassDestinationValidation')) {
       if (this.immediateDestination === '000000000') {
         return fieldError('ImmediateDestination', ErrConstructor, this.immediateDestination);
       }
@@ -203,7 +205,7 @@ export class FileHeader {
     }
 
     // Alphanumeric checks (unless special characters allowed)
-    if (!this.validateOpts?.allowSpecialCharacters) {
+    if (!isSkipped(this.validateOpts, 'allowSpecialCharacters')) {
       const destNameErr = validators.isAlphanumeric(this.immediateDestinationName);
       if (destNameErr) return fieldError('ImmediateDestinationName', destNameErr, this.immediateDestinationName);
 
@@ -215,7 +217,7 @@ export class FileHeader {
     }
 
     // File creation date/time validation
-    if (!this.validateOpts?.skipFileCreationValidation) {
+    if (!isSkipped(this.validateOpts, 'skipFileCreationValidation')) {
       if (this.fileCreationDate !== '') {
         const when = this.fileCreationDateField();
         if (when === '') {
@@ -265,7 +267,7 @@ export class FileHeader {
     if (this.formatCode !== '1') push(fieldError('FormatCode', ErrFormatCode, this.formatCode));
 
     // ImmediateOrigin validation
-    if (!opts.bypassOriginValidation) {
+    if (!isSkipped(opts, 'bypassOriginValidation')) {
       if (this.immediateOrigin === '000000000' || this.immediateOrigin === '0000000000') {
         push(fieldError('ImmediateOrigin', ErrConstructor, this.immediateOrigin));
       }
@@ -275,7 +277,7 @@ export class FileHeader {
     }
 
     // ImmediateDestination validation
-    if (!opts.bypassDestinationValidation) {
+    if (!isSkipped(opts, 'bypassDestinationValidation')) {
       if (this.immediateDestination === '000000000') {
         push(fieldError('ImmediateDestination', ErrConstructor, this.immediateDestination));
       }
@@ -283,14 +285,14 @@ export class FileHeader {
     }
 
     // Alphanumeric checks (unless special characters allowed)
-    if (!this.validateOpts?.allowSpecialCharacters) {
+    if (!isSkipped(this.validateOpts, 'allowSpecialCharacters')) {
       push(fieldError('ImmediateDestinationName', validators.isAlphanumeric(this.immediateDestinationName), this.immediateDestinationName));
       push(fieldError('ImmediateOriginName', validators.isAlphanumeric(this.immediateOriginName), this.immediateOriginName));
       push(fieldError('ReferenceCode', validators.isAlphanumeric(this.referenceCode), this.referenceCode));
     }
 
     // File creation date/time validation
-    if (!this.validateOpts?.skipFileCreationValidation) {
+    if (!isSkipped(this.validateOpts, 'skipFileCreationValidation')) {
       if (this.fileCreationDate !== '' && this.fileCreationDateField() === '') {
         push(fieldError('FileCreationDate', new Error('invalid FileCreationDate'), this.fileCreationDate));
       }
@@ -299,12 +301,15 @@ export class FileHeader {
       }
     }
 
-    return enrichErrors(errors, this.lineNumber, fileHeaderFieldPositions);
+    return applyErrorLevels(
+      enrichErrors(errors, this.lineNumber, fileHeaderFieldPositions),
+      this.validateOpts,
+    );
   }
 
   /** fieldInclusion validates mandatory fields are not default values */
   private fieldInclusion(): Error | null {
-    if (this.validateOpts?.allowMissingFileHeader) return null;
+    if (isSkipped(this.validateOpts, 'allowMissingFileHeader')) return null;
 
     if (this.immediateDestination === '') {
       return fieldError('ImmediateDestination', ErrConstructor, this.immediateDestinationField());

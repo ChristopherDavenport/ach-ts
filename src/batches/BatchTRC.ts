@@ -1,3 +1,4 @@
+import { isSkipped, applyErrorLevels } from '../validateOpts.js';
 import { Batch, registerBatchType } from '../batch.js';
 import type { InvalidEntry } from '../batch.js';
 import { TRC, CreditsOnly } from '../constants.js';
@@ -5,7 +6,7 @@ import { ErrBatchSECType, ErrBatchServiceClassCode, ErrBatchDebitOnly, ErrFieldR
 
 export class BatchTRC extends Batch {
   validate(): Error | null {
-    if (this.validateOpts?.skipAll || this.validateOpts?.bypassBatchValidation) return null;
+    if (isSkipped(this.validateOpts, 'skipAll') || isSkipped(this.validateOpts, 'bypassBatchValidation')) return null;
     const err = this.verify();
     if (err) return err;
     if (this.header.standardEntryClassCode !== TRC) {
@@ -20,7 +21,7 @@ export class BatchTRC extends Batch {
   }
 
   validateAll(): Error[] {
-    if (this.validateOpts?.skipAll || this.validateOpts?.bypassBatchValidation) return [];
+    if (isSkipped(this.validateOpts, 'skipAll') || isSkipped(this.validateOpts, 'bypassBatchValidation')) return [];
     const errors = this.verifyAll();
     if (this.header.standardEntryClassCode !== TRC) {
       errors.push(this.batchError('StandardEntryClassCode', ErrBatchSECType, TRC));
@@ -29,7 +30,7 @@ export class BatchTRC extends Batch {
       errors.push(this.batchError('ServiceClassCode', ErrBatchServiceClassCode, this.header.serviceClassCode));
     }
     for (const inv of this.invalidEntries()) errors.push(inv.error);
-    return errors;
+    return applyErrorLevels(errors, this.validateOpts);
   }
 
   invalidEntries(): InvalidEntry[] {

@@ -1,6 +1,7 @@
 import { entryAddendaPos } from '../constants.js';
 import { enrichErrors, enrichError, addenda99DishonoredFieldPositions } from '../fieldPositions.js';
 import type { ValidateOpts } from '../validateOpts.js';
+import { isSkipped, applyErrorLevel, applyErrorLevels } from '../validateOpts.js';
 import { Converters, converters } from '../utils/converters.js';
 import {
   fieldError,
@@ -80,8 +81,9 @@ export class Addenda99Dishonored {
   }
 
   validate(): Error | null {
-    const err = this._validate();
+    let err = this._validate();
     if (err) enrichError(err, this.lineNumber, addenda99DishonoredFieldPositions);
+    err = applyErrorLevel(err, this.validateOpts);
     return err;
   }
 
@@ -89,7 +91,7 @@ export class Addenda99Dishonored {
     if (this.typeCode === '') return fieldError('TypeCode', ErrConstructor, this.typeCode);
     if (this.typeCode !== '99') return fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode);
 
-    if (!this.validateOpts?.customReturnCodes) {
+    if (!isSkipped(this.validateOpts, 'customReturnCodes')) {
       if (!isDishonoredReturnCode(this.dishonoredReturnReasonCode)) {
         return fieldError('DishonoredReturnReasonCode', ErrAddenda99DishonoredReturnCode, this.dishonoredReturnReasonCode);
       }
@@ -104,13 +106,16 @@ export class Addenda99Dishonored {
 
     if (this.typeCode === '') push(fieldError('TypeCode', ErrConstructor, this.typeCode));
     if (this.typeCode !== '99') push(fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode));
-    if (!this.validateOpts?.customReturnCodes) {
+    if (!isSkipped(this.validateOpts, 'customReturnCodes')) {
       if (!isDishonoredReturnCode(this.dishonoredReturnReasonCode)) {
         push(fieldError('DishonoredReturnReasonCode', ErrAddenda99DishonoredReturnCode, this.dishonoredReturnReasonCode));
       }
     }
 
-    return enrichErrors(errors, this.lineNumber, addenda99DishonoredFieldPositions);
+    return applyErrorLevels(
+      enrichErrors(errors, this.lineNumber, addenda99DishonoredFieldPositions),
+      this.validateOpts,
+    );
   }
 
   dishonoredReturnReasonCodeField(): string { return converters.stringField(this.dishonoredReturnReasonCode, 3); }

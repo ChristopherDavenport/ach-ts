@@ -1,6 +1,7 @@
 import { entryAddendaPos } from '../constants.js';
 import { enrichErrors, enrichError, addenda13FieldPositions } from '../fieldPositions.js';
 import type { ValidateOpts } from '../validateOpts.js';
+import { isSkipped, applyErrorLevel, applyErrorLevels } from '../validateOpts.js';
 import { Converters, converters } from '../utils/converters.js';
 import { Validators, validators } from '../utils/validators.js';
 import {
@@ -54,8 +55,9 @@ export class Addenda13 {
   }
 
   validate(): Error | null {
-    const err = this._validate();
+    let err = this._validate();
     if (err) enrichError(err, this.lineNumber, addenda13FieldPositions);
+    err = applyErrorLevel(err, this.validateOpts);
     return err;
   }
 
@@ -69,7 +71,7 @@ export class Addenda13 {
       return fieldError('ODFIIDNumberQualifier', ErrIDNumberQualifier, this.odfiIDNumberQualifier);
     }
 
-    if (!this.validateOpts?.allowSpecialCharacters) {
+    if (!isSkipped(this.validateOpts, 'allowSpecialCharacters')) {
       const nameErr = validators.isAlphanumeric(this.odfiName);
       if (nameErr) return fieldError('ODFIName', nameErr, this.odfiName);
       const idErr = validators.isAlphanumeric(this.odfiIdentification);
@@ -96,13 +98,16 @@ export class Addenda13 {
     if (validators.isIDNumberQualifier(this.odfiIDNumberQualifier)) {
       push(fieldError('ODFIIDNumberQualifier', ErrIDNumberQualifier, this.odfiIDNumberQualifier));
     }
-    if (!this.validateOpts?.allowSpecialCharacters) {
+    if (!isSkipped(this.validateOpts, 'allowSpecialCharacters')) {
       push(fieldError('ODFIName', validators.isAlphanumeric(this.odfiName), this.odfiName));
       push(fieldError('ODFIIdentification', validators.isAlphanumeric(this.odfiIdentification), this.odfiIdentification));
       push(fieldError('ODFIBranchCountryCode', validators.isAlphanumeric(this.odfiBranchCountryCode), this.odfiBranchCountryCode));
     }
 
-    return enrichErrors(errors, this.lineNumber, addenda13FieldPositions);
+    return applyErrorLevels(
+      enrichErrors(errors, this.lineNumber, addenda13FieldPositions),
+      this.validateOpts,
+    );
   }
 
   private fieldInclusion(): Error | null {

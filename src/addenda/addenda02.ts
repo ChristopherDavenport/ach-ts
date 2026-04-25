@@ -1,6 +1,7 @@
 import { entryAddendaPos } from '../constants.js';
 import { enrichErrors, enrichError, addenda02FieldPositions } from '../fieldPositions.js';
 import type { ValidateOpts } from '../validateOpts.js';
+import { isSkipped, applyErrorLevel, applyErrorLevels } from '../validateOpts.js';
 import { Converters, converters } from '../utils/converters.js';
 import { Validators, validators } from '../utils/validators.js';
 import {
@@ -82,8 +83,9 @@ export class Addenda02 {
   }
 
   validate(): Error | null {
-    const err = this._validate();
+    let err = this._validate();
     if (err) enrichError(err, this.lineNumber, addenda02FieldPositions);
+    err = applyErrorLevel(err, this.validateOpts);
     return err;
   }
 
@@ -98,7 +100,7 @@ export class Addenda02 {
       return fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode);
     }
 
-    if (!this.validateOpts?.allowSpecialCharacters) {
+    if (!isSkipped(this.validateOpts, 'allowSpecialCharacters')) {
       for (const [name, val] of [
         ['ReferenceInformationOne', this.referenceInformationOne],
         ['ReferenceInformationTwo', this.referenceInformationTwo],
@@ -144,7 +146,7 @@ export class Addenda02 {
     if (validators.isTypeCode(this.typeCode)) push(fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode));
     if (this.typeCode !== '02') push(fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode));
 
-    if (!this.validateOpts?.allowSpecialCharacters) {
+    if (!isSkipped(this.validateOpts, 'allowSpecialCharacters')) {
       for (const [name, val] of [
         ['ReferenceInformationOne', this.referenceInformationOne],
         ['ReferenceInformationTwo', this.referenceInformationTwo],
@@ -166,7 +168,10 @@ export class Addenda02 {
     if (validators.isMonth(mm)) push(fieldError('TransactionDate', ErrValidMonth, mm));
     if (validators.isDay(mm, dd)) push(fieldError('TransactionDate', ErrValidDay, mm));
 
-    return enrichErrors(errors, this.lineNumber, addenda02FieldPositions);
+    return applyErrorLevels(
+      enrichErrors(errors, this.lineNumber, addenda02FieldPositions),
+      this.validateOpts,
+    );
   }
 
   private fieldInclusion(): Error | null {

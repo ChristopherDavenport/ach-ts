@@ -1,3 +1,4 @@
+import { isSkipped, applyErrorLevels } from '../validateOpts.js';
 import { Batch, registerBatchType } from '../batch.js';
 import type { InvalidEntry } from '../batch.js';
 import { COR,
@@ -13,7 +14,7 @@ import { ErrBatchSECType, ErrBatchAmountNonZero, ErrBatchTransactionCode, ErrBat
 
 export class BatchCOR extends Batch {
   validate(): Error | null {
-    if (this.validateOpts?.skipAll || this.validateOpts?.bypassBatchValidation) return null;
+    if (isSkipped(this.validateOpts, 'skipAll') || isSkipped(this.validateOpts, 'bypassBatchValidation')) return null;
     const err = this.verify();
     if (err) return err;
     const addenda98Err = this.isAddenda98();
@@ -33,7 +34,7 @@ export class BatchCOR extends Batch {
   }
 
   validateAll(): Error[] {
-    if (this.validateOpts?.skipAll || this.validateOpts?.bypassBatchValidation) return [];
+    if (isSkipped(this.validateOpts, 'skipAll') || isSkipped(this.validateOpts, 'bypassBatchValidation')) return [];
     const errors = this.verifyAll();
     const addenda98Err = this.isAddenda98();
     if (addenda98Err) errors.push(addenda98Err);
@@ -47,7 +48,7 @@ export class BatchCOR extends Batch {
       errors.push(this.batchError('TotalDebitEntryDollarAmount', ErrBatchAmountNonZero, this.control.totalDebitEntryDollarAmount));
     }
     for (const inv of this.invalidEntries()) errors.push(inv.error);
-    return errors;
+    return applyErrorLevels(errors, this.validateOpts);
   }
 
   invalidEntries(): InvalidEntry[] {

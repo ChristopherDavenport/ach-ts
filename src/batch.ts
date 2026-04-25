@@ -20,6 +20,7 @@ import {
 } from './constants.js';
 import type { OffsetAccountType } from './constants.js';
 import type { ValidateOpts } from './validateOpts.js';
+import { isSkipped, applyErrorLevel, applyErrorLevels } from './validateOpts.js';
 import { BatchHeader, newBatchHeader } from './batchHeader.js';
 import { BatchControl, newBatchControl } from './batchControl.js';
 import { EntryDetail } from './entryDetail.js';
@@ -363,7 +364,7 @@ export class Batch implements Batcher {
   protected verify(): Error | null {
     const err = this._verify();
     if (err) this.enrichBatchError(err);
-    return err;
+    return applyErrorLevel(err, this.validateOpts);
   }
 
   private _verify(): Error | null {
@@ -378,13 +379,13 @@ export class Batch implements Batcher {
 
     if (!this.isADV()) {
       // Validate header/control match
-      if (!(this.validateOpts?.unequalServiceClassCode) &&
+      if (!(isSkipped(this.validateOpts, 'unequalServiceClassCode')) &&
         this.header.serviceClassCode !== this.control.serviceClassCode) {
         return this.batchError('ServiceClassCode',
           new ErrBatchHeaderControlEquality(this.header.serviceClassCode, this.control.serviceClassCode));
       }
       if (this.header.companyIdentification !== this.control.companyIdentification &&
-        !(this.validateOpts?.bypassCompanyIdentificationMatch)) {
+        !(isSkipped(this.validateOpts, 'bypassCompanyIdentificationMatch'))) {
         return this.batchError('CompanyIdentification',
           new ErrBatchHeaderControlEquality(this.header.companyIdentification, this.control.companyIdentification));
       }
@@ -398,7 +399,7 @@ export class Batch implements Batcher {
       }
     } else {
       // ADV control checks
-      if (!(this.validateOpts?.unequalServiceClassCode) &&
+      if (!(isSkipped(this.validateOpts, 'unequalServiceClassCode')) &&
         this.header.serviceClassCode !== this.advControl.serviceClassCode) {
         return this.batchError('ServiceClassCode',
           new ErrBatchHeaderControlEquality(this.header.serviceClassCode, this.advControl.serviceClassCode));
@@ -416,7 +417,7 @@ export class Batch implements Batcher {
     let err = this.validateTotals();
     if (err) return err;
 
-    if (!this.validateOpts?.customTraceNumbers) {
+    if (!isSkipped(this.validateOpts, 'customTraceNumbers')) {
       err = this.isSequenceAscending();
       if (err) return err;
     }
@@ -424,7 +425,7 @@ export class Batch implements Batcher {
     err = this.isOriginatorDNE();
     if (err) return err;
 
-    if (!this.validateOpts?.customTraceNumbers) {
+    if (!isSkipped(this.validateOpts, 'customTraceNumbers')) {
       err = this.isTraceNumberODFI();
       if (err) return err;
       err = this.isAddendaSequence();
@@ -479,13 +480,13 @@ export class Batch implements Batcher {
     errors.push(...this.isFieldInclusionAll());
 
     if (!this.isADV()) {
-      if (!(this.validateOpts?.unequalServiceClassCode) &&
+      if (!(isSkipped(this.validateOpts, 'unequalServiceClassCode')) &&
         this.header.serviceClassCode !== this.control.serviceClassCode) {
         push(this.batchError('ServiceClassCode',
           new ErrBatchHeaderControlEquality(this.header.serviceClassCode, this.control.serviceClassCode)));
       }
       if (this.header.companyIdentification !== this.control.companyIdentification &&
-        !(this.validateOpts?.bypassCompanyIdentificationMatch)) {
+        !(isSkipped(this.validateOpts, 'bypassCompanyIdentificationMatch'))) {
         push(this.batchError('CompanyIdentification',
           new ErrBatchHeaderControlEquality(this.header.companyIdentification, this.control.companyIdentification)));
       }
@@ -498,7 +499,7 @@ export class Batch implements Batcher {
           new ErrBatchHeaderControlEquality(this.header.batchNumber, this.control.batchNumber)));
       }
     } else {
-      if (!(this.validateOpts?.unequalServiceClassCode) &&
+      if (!(isSkipped(this.validateOpts, 'unequalServiceClassCode')) &&
         this.header.serviceClassCode !== this.advControl.serviceClassCode) {
         push(this.batchError('ServiceClassCode',
           new ErrBatchHeaderControlEquality(this.header.serviceClassCode, this.advControl.serviceClassCode)));
@@ -515,13 +516,13 @@ export class Batch implements Batcher {
 
     errors.push(...this.validateAllTotals());
 
-    if (!this.validateOpts?.customTraceNumbers) {
+    if (!isSkipped(this.validateOpts, 'customTraceNumbers')) {
       push(this.isSequenceAscending());
     }
 
     push(this.isOriginatorDNE());
 
-    if (!this.validateOpts?.customTraceNumbers) {
+    if (!isSkipped(this.validateOpts, 'customTraceNumbers')) {
       push(this.isTraceNumberODFI());
       push(this.isAddendaSequence());
     }
@@ -533,7 +534,7 @@ export class Batch implements Batcher {
       this.enrichBatchError(err);
     }
 
-    return errors;
+    return applyErrorLevels(errors, this.validateOpts);
   }
 
   // --- Validation helpers ---
@@ -596,7 +597,7 @@ export class Batch implements Batcher {
     if (!this.isADV()) {
       let lastSeq = '0';
       for (const entry of this.entries) {
-        if (!this.validateOpts?.customTraceNumbers) {
+        if (!isSkipped(this.validateOpts, 'customTraceNumbers')) {
           if (entry.traceNumber <= lastSeq) {
             return this.batchError('TraceNumber', new ErrBatchAscending(lastSeq, entry.traceNumber));
           }
@@ -630,7 +631,7 @@ export class Batch implements Batcher {
         entryCount += 1 + entry.addendaCount();
       }
       if (entryCount !== this.control.entryAddendaCount) {
-        if (this.validateOpts?.unequalAddendaCounts) return null;
+        if (isSkipped(this.validateOpts, 'unequalAddendaCounts')) return null;
         return this.batchError('EntryAddendaCount',
           new ErrBatchCalculatedControlEquality(entryCount, this.control.entryAddendaCount));
       }
@@ -639,7 +640,7 @@ export class Batch implements Batcher {
         entryCount++;
       }
       if (entryCount !== this.advControl.entryAddendaCount) {
-        if (this.validateOpts?.unequalAddendaCounts) return null;
+        if (isSkipped(this.validateOpts, 'unequalAddendaCounts')) return null;
         return this.batchError('EntryAddendaCount',
           new ErrBatchCalculatedControlEquality(entryCount, this.advControl.entryAddendaCount));
       }
@@ -684,7 +685,7 @@ export class Batch implements Batcher {
   }
 
   private isTraceNumberODFI(): Error | null {
-    if (this.validateOpts?.bypassOriginValidation) return null;
+    if (isSkipped(this.validateOpts, 'bypassOriginValidation')) return null;
     const bhODFI = this.header.odfiIdentificationField();
     for (const entry of this.entries) {
       const entryODFI = entry.traceNumber.length >= 8 ? entry.traceNumber.substring(0, 8) : '';
@@ -774,7 +775,7 @@ export class Batch implements Batcher {
         switch (this.header.standardEntryClassCode) {
           case ARC: case BOC: case CIE: case DNE: case ENR: case MTE:
           case POP: case POS: case PPD: case RCK: case SHR: case TEL: case WEB:
-            if (!this.validateOpts?.allowEmptyIndividualName) {
+            if (!isSkipped(this.validateOpts, 'allowEmptyIndividualName')) {
               const nameErr = validators.isNonZero(entry.individualName);
               if (nameErr) return fieldError('IndividualName', nameErr, entry.individualName);
             }
@@ -835,7 +836,7 @@ export class Batch implements Batcher {
         switch (this.header.standardEntryClassCode) {
           case ARC: case BOC: case CIE: case DNE: case ENR: case MTE:
           case POP: case POS: case PPD: case RCK: case SHR: case TEL: case WEB:
-            if (!this.validateOpts?.allowEmptyIndividualName) {
+            if (!isSkipped(this.validateOpts, 'allowEmptyIndividualName')) {
               const nameErr = fieldError('IndividualName', validators.isNonZero(entry.individualName), entry.individualName);
               if (nameErr) {
                 nameErr.line = entry.lineNumber;
@@ -969,7 +970,7 @@ export class Batch implements Batcher {
   // --- Entry validation helpers ---
 
   validAmountForCodes(entry: EntryDetail): Error | null {
-    if (this.validateOpts?.allowInvalidAmounts) return null;
+    if (isSkipped(this.validateOpts, 'allowInvalidAmounts')) return null;
 
     if (entry.addenda98 || entry.addenda98Refused) {
       // NOC entries will have a zero'd amount value
@@ -987,7 +988,7 @@ export class Batch implements Batcher {
       return fieldError('Amount', ErrBatchAmountNonZero, entry.amount);
     } else {
       if (entry.amount === 0) {
-        if (this.validateOpts?.allowZeroEntryAmount) return null;
+        if (isSkipped(this.validateOpts, 'allowZeroEntryAmount')) return null;
         switch (this.header.standardEntryClassCode) {
           case ACK: case ATX:
             if (entry.transactionCode === CheckingZeroDollarRemittanceCredit ||

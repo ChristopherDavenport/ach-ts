@@ -1,6 +1,7 @@
 import { batchControlPos, AutomatedAccountingAdvices } from './constants.js';
 import { enrichErrors, enrichError, advBatchControlFieldPositions } from './fieldPositions.js';
 import type { ValidateOpts } from './validateOpts.js';
+import { isSkipped, applyErrorLevel, applyErrorLevels } from './validateOpts.js';
 import { Converters, converters } from './utils/converters.js';
 import { Validators, validators } from './utils/validators.js';
 import { fieldError, ErrConstructor } from './errors/index.js';
@@ -64,8 +65,9 @@ export class ADVBatchControl {
   }
 
   validate(): Error | null {
-    const err = this._validate();
+    let err = this._validate();
     if (err) enrichError(err, this.lineNumber, advBatchControlFieldPositions);
+    err = applyErrorLevel(err, this.validateOpts);
     return err;
   }
 
@@ -77,7 +79,7 @@ export class ADVBatchControl {
       return fieldError('ServiceClassCode', new Error('invalid service class code'), String(this.serviceClassCode));
     }
 
-    if (!this.validateOpts?.allowSpecialCharacters) {
+    if (!isSkipped(this.validateOpts, 'allowSpecialCharacters')) {
       const err = validators.isAlphanumeric(this.achOperatorData);
       if (err) return fieldError('ACHOperatorData', err, this.achOperatorData);
     }
@@ -98,11 +100,14 @@ export class ADVBatchControl {
     if (validators.isServiceClass(this.serviceClassCode)) {
       push(fieldError('ServiceClassCode', new Error('invalid service class code'), String(this.serviceClassCode)));
     }
-    if (!this.validateOpts?.allowSpecialCharacters) {
+    if (!isSkipped(this.validateOpts, 'allowSpecialCharacters')) {
       push(fieldError('ACHOperatorData', validators.isAlphanumeric(this.achOperatorData), this.achOperatorData));
     }
 
-    return enrichErrors(errors, this.lineNumber, advBatchControlFieldPositions);
+    return applyErrorLevels(
+      enrichErrors(errors, this.lineNumber, advBatchControlFieldPositions),
+      this.validateOpts,
+    );
   }
 
   private fieldInclusion(): Error | null {

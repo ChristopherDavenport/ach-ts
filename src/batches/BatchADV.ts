@@ -1,3 +1,4 @@
+import { isSkipped, applyErrorLevels } from '../validateOpts.js';
 import { Batch, registerBatchType } from '../batch.js';
 import type { InvalidEntry } from '../batch.js';
 import { ADV, AutomatedAccountingAdvices, CategoryForward,
@@ -11,7 +12,7 @@ import { newADVBatchControl } from '../advBatchControl.js';
 
 export class BatchADV extends Batch {
   validate(): Error | null {
-    if (this.validateOpts?.skipAll || this.validateOpts?.bypassBatchValidation) return null;
+    if (isSkipped(this.validateOpts, 'skipAll') || isSkipped(this.validateOpts, 'bypassBatchValidation')) return null;
     if (this.header.standardEntryClassCode !== ADV) {
       return this.batchError('StandardEntryClassCode', ErrBatchSECType, ADV);
     }
@@ -29,7 +30,7 @@ export class BatchADV extends Batch {
   }
 
   validateAll(): Error[] {
-    if (this.validateOpts?.skipAll || this.validateOpts?.bypassBatchValidation) return [];
+    if (isSkipped(this.validateOpts, 'skipAll') || isSkipped(this.validateOpts, 'bypassBatchValidation')) return [];
     const errors: Error[] = [];
     if (this.header.standardEntryClassCode !== ADV) {
       errors.push(this.batchError('StandardEntryClassCode', ErrBatchSECType, ADV));
@@ -42,7 +43,7 @@ export class BatchADV extends Batch {
     }
     errors.push(...this.verifyAll());
     for (const inv of this.invalidEntries()) errors.push(inv.error);
-    return errors;
+    return applyErrorLevels(errors, this.validateOpts);
   }
 
   invalidEntries(): InvalidEntry[] {

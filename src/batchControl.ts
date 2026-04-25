@@ -1,6 +1,7 @@
 import { batchControlPos } from './constants.js';
 import { enrichErrors, enrichError, batchControlFieldPositions } from './fieldPositions.js';
 import type { ValidateOpts } from './validateOpts.js';
+import { isSkipped, applyErrorLevel, applyErrorLevels } from './validateOpts.js';
 import { Converters, converters } from './utils/converters.js';
 import { Validators, validators } from './utils/validators.js';
 import { fieldError, ErrConstructor, ErrServiceClass } from './errors/index.js';
@@ -88,8 +89,9 @@ export class BatchControl {
 
   /** Validate performs NACHA format rule checks */
   validate(): Error | null {
-    const err = this._validate();
+    let err = this._validate();
     if (err) enrichError(err, this.lineNumber, batchControlFieldPositions);
+    err = applyErrorLevel(err, this.validateOpts);
     return err;
   }
 
@@ -100,7 +102,7 @@ export class BatchControl {
     if (validators.isServiceClass(this.serviceClassCode)) {
       return fieldError('ServiceClassCode', ErrServiceClass, this.serviceClassCode);
     }
-    if (!this.validateOpts?.allowSpecialCharacters) {
+    if (!isSkipped(this.validateOpts, 'allowSpecialCharacters')) {
       const err = validators.isAlphanumeric(this.companyIdentification);
       if (err) return fieldError('CompanyIdentification', err, this.companyIdentification);
     }
@@ -133,7 +135,7 @@ export class BatchControl {
     if (validators.isServiceClass(this.serviceClassCode)) {
       push(fieldError('ServiceClassCode', ErrServiceClass, this.serviceClassCode));
     }
-    if (!this.validateOpts?.allowSpecialCharacters) {
+    if (!isSkipped(this.validateOpts, 'allowSpecialCharacters')) {
       push(fieldError('CompanyIdentification', validators.isAlphanumeric(this.companyIdentification), this.companyIdentification));
     }
     if (this.totalDebitEntryDollarAmount > BatchControl.NachaBatchDebitCreditLimit) {
@@ -151,7 +153,10 @@ export class BatchControl {
       ));
     }
 
-    return enrichErrors(errors, this.lineNumber, batchControlFieldPositions);
+    return applyErrorLevels(
+      enrichErrors(errors, this.lineNumber, batchControlFieldPositions),
+      this.validateOpts,
+    );
   }
 
   private fieldInclusion(): Error | null {

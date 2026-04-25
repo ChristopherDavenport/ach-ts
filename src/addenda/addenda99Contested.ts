@@ -1,6 +1,7 @@
 import { entryAddendaPos } from '../constants.js';
 import { enrichErrors, enrichError, addenda99ContestedFieldPositions } from '../fieldPositions.js';
 import type { ValidateOpts } from '../validateOpts.js';
+import { isSkipped, applyErrorLevel, applyErrorLevels } from '../validateOpts.js';
 import { Converters, converters } from '../utils/converters.js';
 import {
   fieldError,
@@ -94,8 +95,9 @@ export class Addenda99Contested {
   }
 
   validate(): Error | null {
-    const err = this._validate();
+    let err = this._validate();
     if (err) enrichError(err, this.lineNumber, addenda99ContestedFieldPositions);
+    err = applyErrorLevel(err, this.validateOpts);
     return err;
   }
 
@@ -103,7 +105,7 @@ export class Addenda99Contested {
     if (this.typeCode === '') return fieldError('TypeCode', ErrConstructor, this.typeCode);
     if (this.typeCode !== '99') return fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode);
 
-    if (!this.validateOpts?.customReturnCodes) {
+    if (!isSkipped(this.validateOpts, 'customReturnCodes')) {
       if (!isContestedReturnCode(this.contestedReturnCode)) {
         return fieldError('ContestedReturnCode', ErrAddenda99ContestedReturnCode, this.contestedReturnCode);
       }
@@ -118,13 +120,16 @@ export class Addenda99Contested {
 
     if (this.typeCode === '') push(fieldError('TypeCode', ErrConstructor, this.typeCode));
     if (this.typeCode !== '99') push(fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode));
-    if (!this.validateOpts?.customReturnCodes) {
+    if (!isSkipped(this.validateOpts, 'customReturnCodes')) {
       if (!isContestedReturnCode(this.contestedReturnCode)) {
         push(fieldError('ContestedReturnCode', ErrAddenda99ContestedReturnCode, this.contestedReturnCode));
       }
     }
 
-    return enrichErrors(errors, this.lineNumber, addenda99ContestedFieldPositions);
+    return applyErrorLevels(
+      enrichErrors(errors, this.lineNumber, addenda99ContestedFieldPositions),
+      this.validateOpts,
+    );
   }
 
   contestedReturnCodeField(): string { return converters.stringField(this.contestedReturnCode, 3); }

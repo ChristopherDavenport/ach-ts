@@ -12,6 +12,10 @@ import {
   Addenda99, newAddenda99,
   newBatch,
   mergeValidateOpts,
+  isSkipped,
+  applyErrorLevel,
+  applyErrorLevels,
+  getFlagLevel,
   PPD, CCD, WEB, COR,
   MixedDebitsAndCredits, CreditsOnly, DebitsOnly,
   CheckingCredit, CheckingDebit,
@@ -19,7 +23,8 @@ import {
   CheckingPrenoteCredit,
   CategoryForward, CategoryNOC,
 } from '../src/index.js';
-import type { ValidateOpts, Batcher } from '../src/index.js';
+import type { ValidateOpts, ValidationLevel, Batcher } from '../src/index.js';
+import { ACHError, FieldError, fieldError, ErrNonAlphanumeric, ErrFieldRequired } from '../src/errors/index.js';
 import '../src/batches/index.js';
 
 const testdataDir = path.join(__dirname, 'testdata');
@@ -449,5 +454,307 @@ describe('ValidateOpts: bypass.json integration', () => {
     const content = readFixture('bypass.json');
     const [file, err] = fileFromJSON(content);
     expect(file).not.toBeNull();
+  });
+});
+
+// =========================================================================
+// Validation Levels - Unit Tests
+// =========================================================================
+describe('isSkipped', () => {
+  it('returns false when opts is undefined', () => {
+    expect(isSkipped(undefined, 'allowSpecialCharacters')).toBe(false);
+  });
+
+  it('returns true when boolean flag is set', () => {
+    const opts: ValidateOpts = { allowSpecialCharacters: true };
+    expect(isSkipped(opts, 'allowSpecialCharacters')).toBe(true);
+  });
+
+  it('returns false when boolean flag is false and no validationLevels', () => {
+    const opts: ValidateOpts = { allowSpecialCharacters: false };
+    expect(isSkipped(opts, 'allowSpecialCharacters')).toBe(false);
+  });
+
+  it('returns true when validationLevels maps flag to skip', () => {
+    const opts: ValidateOpts = {
+      validationLevels: { allowSpecialCharacters: 'skip' },
+    };
+    expect(isSkipped(opts, 'allowSpecialCharacters')).toBe(true);
+  });
+
+  it('returns false when validationLevels maps flag to warning', () => {
+    const opts: ValidateOpts = {
+      validationLevels: { allowSpecialCharacters: 'warning' },
+    };
+    expect(isSkipped(opts, 'allowSpecialCharacters')).toBe(false);
+  });
+
+  it('boolean flag true takes precedence over validationLevels error', () => {
+    const opts: ValidateOpts = {
+      allowSpecialCharacters: true,
+      validationLevels: { allowSpecialCharacters: 'error' },
+    };
+    expect(isSkipped(opts, 'allowSpecialCharacters')).toBe(true);
+  });
+});
+
+describe('getFlagLevel', () => {
+  it('returns undefined when opts is undefined', () => {
+    expect(getFlagLevel(undefined, 'allowSpecialCharacters')).toBeUndefined();
+  });
+
+  it('returns undefined when no validationLevels', () => {
+    const opts: ValidateOpts = {};
+    expect(getFlagLevel(opts, 'allowSpecialCharacters')).toBeUndefined();
+  });
+
+  it('returns the level when set', () => {
+    const opts: ValidateOpts = {
+      validationLevels: { allowSpecialCharacters: 'warning' },
+    };
+    expect(getFlagLevel(opts, 'allowSpecialCharacters')).toBe('warning');
+  });
+});
+
+describe('applyErrorLevel', () => {
+  it('returns null for null error', () => {
+    const opts: ValidateOpts = { validationLevels: { nonAlphanumeric: 'info' } };
+    expect(applyErrorLevel(null, opts)).toBeNull();
+  });
+
+  it('returns error unchanged when no validationLevels', () => {
+    const err = new ACHError('test');
+    err.code = 'nonAlphanumeric';
+    expect(applyErrorLevel(err, undefined)).toBe(err);
+    expect(applyErrorLevel(err, {})).toBe(err);
+  });
+
+  it('sets severity by error code', () => {
+    const err = new ACHError('test');
+    err.code = 'nonAlphanumeric';
+    const opts: ValidateOpts = { validationLevels: { nonAlphanumeric: 'info' } };
+    const result = applyErrorLevel(err, opts);
+    expect(result).toBe(err);
+    expect((result as ACHError).severity).toBe('info');
+  });
+
+  it('returns null when error code maps to skip', () => {
+    const err = new ACHError('test');
+    err.code = 'nonAlphanumeric';
+    const opts: ValidateOpts = { validationLevels: { nonAlphanumeric: 'skip' } };
+    expect(applyErrorLevel(err, opts)).toBeNull();
+  });
+
+  it('sets severity by cause error code for FieldError', () => {
+    const fe = fieldError('CompanyName', ErrNonAlphanumeric, 'test™')!;
+    const opts: ValidateOpts = { validationLevels: { nonAlphanumeric: 'info' } };
+    const result = applyErrorLevel(fe, opts);
+    expect(result).toBe(fe);
+    expect((result as ACHError).severity).toBe('info');
+  });
+
+  it('sets severity by flag name', () => {
+    const err = new ACHError('test');
+    const opts: ValidateOpts = { validationLevels: { allowSpecialCharacters: 'warning' } };
+    const result = applyErrorLevel(err, opts, 'allowSpecialCharacters');
+    expect(result).toBe(err);
+    expect((result as ACHError).severity).toBe('warning');
+  });
+
+  it('error code overrides flag name', () => {
+    const err = new ACHError('test');
+    err.code = 'nonAlphanumeric';
+    const opts: ValidateOpts = {
+      validationLevels: {
+        allowSpecialCharacters: 'warning',
+        nonAlphanumeric: 'info',
+      },
+    };
+    const result = applyErrorLevel(err, opts, 'allowSpecialCharacters');
+    expect((result as ACHError).severity).toBe('info');
+  });
+});
+
+describe('applyErrorLevels', () => {
+  it('returns empty array for empty input', () => {
+    const opts: ValidateOpts = { validationLevels: { nonAlphanumeric: 'skip' } };
+    expect(applyErrorLevels([], opts)).toEqual([]);
+  });
+
+  it('filters out skip errors', () => {
+    const err1 = new ACHError('keep');
+    err1.code = 'fieldRequired';
+    const err2 = new ACHError('skip');
+    err2.code = 'nonAlphanumeric';
+    const opts: ValidateOpts = { validationLevels: { nonAlphanumeric: 'skip' } };
+    const result = applyErrorLevels([err1, err2], opts);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toBe(err1);
+  });
+
+  it('sets severity on remaining errors', () => {
+    const err = new ACHError('test');
+    err.code = 'nonAlphanumeric';
+    const opts: ValidateOpts = { validationLevels: { nonAlphanumeric: 'warning' } };
+    const result = applyErrorLevels([err], opts);
+    expect(result).toHaveLength(1);
+    expect((result[0] as ACHError).severity).toBe('warning');
+  });
+
+  it('passes through when no validationLevels', () => {
+    const errors = [new Error('test')];
+    expect(applyErrorLevels(errors, undefined)).toBe(errors);
+    expect(applyErrorLevels(errors, {})).toBe(errors);
+  });
+});
+
+describe('mergeValidateOpts with validationLevels', () => {
+  it('merges validationLevels from both opts', () => {
+    const a: ValidateOpts = { validationLevels: { nonAlphanumeric: 'warning' } };
+    const b: ValidateOpts = { validationLevels: { fieldRequired: 'info' } };
+    const merged = mergeValidateOpts(a, b)!;
+    expect(merged.validationLevels).toEqual({
+      nonAlphanumeric: 'warning',
+      fieldRequired: 'info',
+    });
+  });
+
+  it('b overrides a for same key', () => {
+    const a: ValidateOpts = { validationLevels: { nonAlphanumeric: 'warning' } };
+    const b: ValidateOpts = { validationLevels: { nonAlphanumeric: 'info' } };
+    const merged = mergeValidateOpts(a, b)!;
+    expect(merged.validationLevels?.nonAlphanumeric).toBe('info');
+  });
+
+  it('keeps validationLevels from a when b has none', () => {
+    const a: ValidateOpts = { validationLevels: { nonAlphanumeric: 'warning' } };
+    const b: ValidateOpts = {};
+    const merged = mergeValidateOpts(a, b)!;
+    expect(merged.validationLevels).toEqual({ nonAlphanumeric: 'warning' });
+  });
+});
+
+// =========================================================================
+// Validation Levels - Integration Tests
+// =========================================================================
+describe('validationLevels integration', () => {
+  it('skip via validationLevels is equivalent to boolean flag for allowSpecialCharacters', () => {
+    // Create entry with special characters
+    const ed = newEntryDetail();
+    ed.transactionCode = CheckingCredit;
+    ed.rdfiIdentification = '23138010';
+    ed.checkDigit = '4';
+    ed.dfiAccountNumber = '12345™';
+    ed.amount = 100000;
+    ed.individualName = 'Wade Arnold';
+    ed.traceNumber = '121042880000001';
+
+    // Without either flag, should fail validation
+    const errNoFlag = ed.validate();
+    expect(errNoFlag).not.toBeNull();
+    expect(errNoFlag!.message).toContain('DFIAccountNumber');
+
+    // With boolean flag
+    ed.setValidation({ allowSpecialCharacters: true });
+    expect(ed.validate()).toBeNull();
+
+    // With validationLevels skip (should behave the same)
+    ed.setValidation({ validationLevels: { allowSpecialCharacters: 'skip' } });
+    expect(ed.validate()).toBeNull();
+  });
+
+  it('downgrade error to warning via error code', () => {
+    const ed = newEntryDetail();
+    ed.transactionCode = CheckingCredit;
+    ed.rdfiIdentification = '23138010';
+    ed.checkDigit = '4';
+    ed.dfiAccountNumber = '12345™';
+    ed.amount = 100000;
+    ed.individualName = 'Wade Arnold';
+    ed.traceNumber = '121042880000001';
+
+    ed.setValidation({ validationLevels: { nonAlphanumeric: 'warning' } });
+    const err = ed.validate();
+    expect(err).not.toBeNull();
+    expect((err as ACHError).severity).toBe('warning');
+  });
+
+  it('downgrade error to info via error code in validateAll', () => {
+    const ed = newEntryDetail();
+    ed.transactionCode = CheckingCredit;
+    ed.rdfiIdentification = '23138010';
+    ed.checkDigit = '4';
+    ed.dfiAccountNumber = '12345™';
+    ed.amount = 100000;
+    ed.individualName = 'Wade Arnold';
+    ed.traceNumber = '121042880000001';
+
+    ed.setValidation({ validationLevels: { nonAlphanumeric: 'info' } });
+    const errors = ed.validateAll();
+    // Should still return errors but with info severity
+    const alphaErrors = errors.filter(e => (e as ACHError).code === 'nonAlphanumeric');
+    expect(alphaErrors.length).toBeGreaterThan(0);
+    for (const e of alphaErrors) {
+      expect((e as ACHError).severity).toBe('info');
+    }
+  });
+
+  it('skip via error code filters out in validateAll', () => {
+    const ed = newEntryDetail();
+    ed.transactionCode = CheckingCredit;
+    ed.rdfiIdentification = '23138010';
+    ed.checkDigit = '4';
+    ed.dfiAccountNumber = '12345™';
+    ed.amount = 100000;
+    ed.individualName = 'Wade Arnold';
+    ed.traceNumber = '121042880000001';
+
+    // Without skip, validateAll returns errors for special characters
+    const errsBefore = ed.validateAll();
+    const alphaErrorsBefore = errsBefore.filter(e => (e as ACHError).code === 'nonAlphanumeric');
+    expect(alphaErrorsBefore.length).toBeGreaterThan(0);
+
+    // With skip, those errors are filtered out
+    ed.setValidation({ validationLevels: { nonAlphanumeric: 'skip' } });
+    const errsAfter = ed.validateAll();
+    const alphaErrorsAfter = errsAfter.filter(e => (e as ACHError).code === 'nonAlphanumeric');
+    expect(alphaErrorsAfter).toHaveLength(0);
+  });
+
+  it('batch-level validation levels propagate through file', () => {
+    const file = createMockFile();
+    // Inject special chars into company name
+    const batch = file.batches[0];
+    batch.getHeader().companyName = 'ACME™';
+
+    // Should fail normally
+    file.setValidation({});
+    const err = file.validate();
+    expect(err).not.toBeNull();
+
+    // With validationLevels downgrading nonAlphanumeric to warning
+    file.setValidation({ validationLevels: { nonAlphanumeric: 'warning' } });
+    const warnErr = file.validate();
+    expect(warnErr).not.toBeNull();
+    expect((warnErr as ACHError).severity).toBe('warning');
+  });
+
+  it('omitting validationLevels produces identical results to default', () => {
+    const file = createMockFile();
+    
+    // Validate without levels
+    const err1 = file.validate();
+    const errs1 = file.validateAll();
+    
+    // Validate with empty validationLevels
+    file.setValidation({ validationLevels: {} });
+    const err2 = file.validate();
+    const errs2 = file.validateAll();
+    
+    // Should be identical (both null for valid file)
+    expect(err1).toBeNull();
+    expect(err2).toBeNull();
+    expect(errs1).toHaveLength(0);
+    expect(errs2).toHaveLength(0);
   });
 });

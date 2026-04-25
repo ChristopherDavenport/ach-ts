@@ -1,3 +1,4 @@
+import { isSkipped, applyErrorLevels } from '../validateOpts.js';
 import { Batch, registerBatchType } from '../batch.js';
 import type { InvalidEntry } from '../batch.js';
 import { DNE, CheckingPrenoteCredit, SavingsPrenoteCredit } from '../constants.js';
@@ -5,7 +6,7 @@ import { ErrBatchSECType, ErrBatchAmountNonZero, ErrBatchTransactionCode, ErrBat
 
 export class BatchDNE extends Batch {
   validate(): Error | null {
-    if (this.validateOpts?.skipAll || this.validateOpts?.bypassBatchValidation) return null;
+    if (isSkipped(this.validateOpts, 'skipAll') || isSkipped(this.validateOpts, 'bypassBatchValidation')) return null;
     const err = this.verify();
     if (err) return err;
     if (this.header.standardEntryClassCode !== DNE) {
@@ -17,13 +18,13 @@ export class BatchDNE extends Batch {
   }
 
   validateAll(): Error[] {
-    if (this.validateOpts?.skipAll || this.validateOpts?.bypassBatchValidation) return [];
+    if (isSkipped(this.validateOpts, 'skipAll') || isSkipped(this.validateOpts, 'bypassBatchValidation')) return [];
     const errors = this.verifyAll();
     if (this.header.standardEntryClassCode !== DNE) {
       errors.push(this.batchError('StandardEntryClassCode', ErrBatchSECType, DNE));
     }
     for (const inv of this.invalidEntries()) errors.push(inv.error);
-    return errors;
+    return applyErrorLevels(errors, this.validateOpts);
   }
 
   invalidEntries(): InvalidEntry[] {

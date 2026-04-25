@@ -1,6 +1,7 @@
 import { entryDetailPos, CategoryForward } from './constants.js';
 import { enrichErrors, enrichError, iatEntryDetailFieldPositions } from './fieldPositions.js';
 import type { ValidateOpts } from './validateOpts.js';
+import { isSkipped, applyErrorLevel, applyErrorLevels } from './validateOpts.js';
 import { Converters, converters } from './utils/converters.js';
 import { Validators, validators } from './utils/validators.js';
 import { CalculateCheckDigit } from './utils/validators.js';
@@ -93,8 +94,9 @@ export class IATEntryDetail {
   }
 
   validate(): Error | null {
-    const err = this._validate();
+    let err = this._validate();
     if (err) enrichError(err, this.lineNumber, iatEntryDetailFieldPositions);
+    err = applyErrorLevel(err, this.validateOpts);
     return err;
   }
 
@@ -109,7 +111,7 @@ export class IATEntryDetail {
       const err = validators.isTransactionCode(this.transactionCode);
       if (err) return fieldError('TransactionCode', err, String(this.transactionCode));
     }
-    if (!this.validateOpts?.allowSpecialCharacters) {
+    if (!isSkipped(this.validateOpts, 'allowSpecialCharacters')) {
       const err = validators.isAlphanumeric(this.dfiAccountNumber);
       if (err) return fieldError('DFIAccountNumber', err, this.dfiAccountNumber);
     }
@@ -139,7 +141,7 @@ export class IATEntryDetail {
     } else {
       push(fieldError('TransactionCode', validators.isTransactionCode(this.transactionCode), String(this.transactionCode)));
     }
-    if (!this.validateOpts?.allowSpecialCharacters) {
+    if (!isSkipped(this.validateOpts, 'allowSpecialCharacters')) {
       push(fieldError('DFIAccountNumber', validators.isAlphanumeric(this.dfiAccountNumber), this.dfiAccountNumber));
     }
     const calculated = CalculateCheckDigit(this.rdfiIdentificationField());
@@ -148,7 +150,10 @@ export class IATEntryDetail {
       push(fieldError('RDFIIdentification', new ErrValidCheckDigit(calculated), this.checkDigit));
     }
 
-    return enrichErrors(errors, this.lineNumber, iatEntryDetailFieldPositions);
+    return applyErrorLevels(
+      enrichErrors(errors, this.lineNumber, iatEntryDetailFieldPositions),
+      this.validateOpts,
+    );
   }
 
   private fieldInclusion(): Error | null {

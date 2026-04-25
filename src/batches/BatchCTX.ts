@@ -1,3 +1,4 @@
+import { isSkipped, applyErrorLevels } from '../validateOpts.js';
 import { Batch, registerBatchType } from '../batch.js';
 import type { InvalidEntry } from '../batch.js';
 import { CTX, CheckingPrenoteCredit, CheckingPrenoteDebit, SavingsPrenoteCredit, SavingsPrenoteDebit, GLPrenoteCredit, GLPrenoteDebit, LoanPrenoteCredit } from '../constants.js';
@@ -5,7 +6,7 @@ import { ErrBatchSECType, ErrBatchTransactionCode, ErrBatchAddendaCount, ErrBatc
 
 export class BatchCTX extends Batch {
   validate(): Error | null {
-    if (this.validateOpts?.skipAll || this.validateOpts?.bypassBatchValidation) return null;
+    if (isSkipped(this.validateOpts, 'skipAll') || isSkipped(this.validateOpts, 'bypassBatchValidation')) return null;
     const err = this.verify();
     if (err) return err;
     if (this.header.standardEntryClassCode !== CTX) {
@@ -17,13 +18,13 @@ export class BatchCTX extends Batch {
   }
 
   validateAll(): Error[] {
-    if (this.validateOpts?.skipAll || this.validateOpts?.bypassBatchValidation) return [];
+    if (isSkipped(this.validateOpts, 'skipAll') || isSkipped(this.validateOpts, 'bypassBatchValidation')) return [];
     const errors = this.verifyAll();
     if (this.header.standardEntryClassCode !== CTX) {
       errors.push(this.batchError('StandardEntryClassCode', ErrBatchSECType, CTX));
     }
     for (const inv of this.invalidEntries()) errors.push(inv.error);
-    return errors;
+    return applyErrorLevels(errors, this.validateOpts);
   }
 
   invalidEntries(): InvalidEntry[] {
@@ -39,7 +40,7 @@ export class BatchCTX extends Batch {
 
       const indicator = parseInt(entry.catxAddendaRecordsField(), 10) || 0;
       if (addendaCount !== indicator) {
-        if (!this.validateOpts?.unequalAddendaCounts) {
+        if (!isSkipped(this.validateOpts, 'unequalAddendaCounts')) {
           out.push({ entry, error: this.batchError('AddendaCount', new ErrBatchExpectedAddendaCount(addendaCount, indicator)) });
         }
       }

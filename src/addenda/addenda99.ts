@@ -1,6 +1,7 @@
 import { entryAddendaPos } from '../constants.js';
 import { enrichErrors, enrichError, addenda99FieldPositions } from '../fieldPositions.js';
 import type { ValidateOpts } from '../validateOpts.js';
+import { isSkipped, applyErrorLevel, applyErrorLevels } from '../validateOpts.js';
 import { Converters, converters } from '../utils/converters.js';
 import { Validators, validators } from '../utils/validators.js';
 import {
@@ -156,8 +157,9 @@ export class Addenda99 {
   }
 
   validate(): Error | null {
-    const err = this._validate();
+    let err = this._validate();
     if (err) enrichError(err, this.lineNumber, addenda99FieldPositions);
+    err = applyErrorLevel(err, this.validateOpts);
     return err;
   }
 
@@ -168,7 +170,7 @@ export class Addenda99 {
     if (this.typeCode !== '99') {
       return fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode);
     }
-    if (!this.validateOpts?.customReturnCodes) {
+    if (!isSkipped(this.validateOpts, 'customReturnCodes')) {
       if (!returnCodeDict.has(this.returnCode)) {
         return fieldError('ReturnCode', ErrAddenda99ReturnCode, this.returnCode);
       }
@@ -183,11 +185,14 @@ export class Addenda99 {
 
     if (this.typeCode === '') push(fieldError('TypeCode', ErrConstructor, this.typeCode));
     if (this.typeCode !== '99') push(fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode));
-    if (!this.validateOpts?.customReturnCodes) {
+    if (!isSkipped(this.validateOpts, 'customReturnCodes')) {
       if (!returnCodeDict.has(this.returnCode)) push(fieldError('ReturnCode', ErrAddenda99ReturnCode, this.returnCode));
     }
 
-    return enrichErrors(errors, this.lineNumber, addenda99FieldPositions);
+    return applyErrorLevels(
+      enrichErrors(errors, this.lineNumber, addenda99FieldPositions),
+      this.validateOpts,
+    );
   }
 
   returnCodeField(): ReturnCode | null {

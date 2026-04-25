@@ -1,6 +1,7 @@
 import { entryAddendaPos } from '../constants.js';
 import { enrichErrors, enrichError, addenda14FieldPositions } from '../fieldPositions.js';
 import type { ValidateOpts } from '../validateOpts.js';
+import { isSkipped, applyErrorLevel, applyErrorLevels } from '../validateOpts.js';
 import { Converters, converters } from '../utils/converters.js';
 import { Validators, validators } from '../utils/validators.js';
 import {
@@ -54,8 +55,9 @@ export class Addenda14 {
   }
 
   validate(): Error | null {
-    const err = this._validate();
+    let err = this._validate();
     if (err) enrichError(err, this.lineNumber, addenda14FieldPositions);
+    err = applyErrorLevel(err, this.validateOpts);
     return err;
   }
 
@@ -69,7 +71,7 @@ export class Addenda14 {
       return fieldError('RDFIIDNumberQualifier', ErrIDNumberQualifier, this.rdfiIDNumberQualifier);
     }
 
-    if (!this.validateOpts?.allowSpecialCharacters) {
+    if (!isSkipped(this.validateOpts, 'allowSpecialCharacters')) {
       const nameErr = validators.isAlphanumeric(this.rdfiName);
       if (nameErr) return fieldError('RDFIName', nameErr, this.rdfiName);
       const idErr = validators.isAlphanumeric(this.rdfiIdentification);
@@ -96,13 +98,16 @@ export class Addenda14 {
     if (validators.isIDNumberQualifier(this.rdfiIDNumberQualifier)) {
       push(fieldError('RDFIIDNumberQualifier', ErrIDNumberQualifier, this.rdfiIDNumberQualifier));
     }
-    if (!this.validateOpts?.allowSpecialCharacters) {
+    if (!isSkipped(this.validateOpts, 'allowSpecialCharacters')) {
       push(fieldError('RDFIName', validators.isAlphanumeric(this.rdfiName), this.rdfiName));
       push(fieldError('RDFIIdentification', validators.isAlphanumeric(this.rdfiIdentification), this.rdfiIdentification));
       push(fieldError('RDFIBranchCountryCode', validators.isAlphanumeric(this.rdfiBranchCountryCode), this.rdfiBranchCountryCode));
     }
 
-    return enrichErrors(errors, this.lineNumber, addenda14FieldPositions);
+    return applyErrorLevels(
+      enrichErrors(errors, this.lineNumber, addenda14FieldPositions),
+      this.validateOpts,
+    );
   }
 
   private fieldInclusion(): Error | null {

@@ -17,7 +17,7 @@ import {
   CategoryForward,
 } from './constants.js';
 import type { ValidateOpts } from './validateOpts.js';
-import { mergeValidateOpts } from './validateOpts.js';
+import { mergeValidateOpts, isSkipped, applyErrorLevel, applyErrorLevels } from './validateOpts.js';
 import { FileHeader, newFileHeader } from './fileHeader.js';
 import { FileControl, newFileControl } from './fileControl.js';
 import { ADVFileControl, newADVFileControl } from './advFileControl.js';
@@ -318,8 +318,9 @@ export class File {
   // --- Validate ---
 
   validate(): Error | null {
-    const err = this.validateWith(this.validateOpts);
+    let err = this.validateWith(this.validateOpts);
     if (err) this.enrichFileError(err);
+    err = applyErrorLevel(err, this.validateOpts);
     return err;
   }
 
@@ -328,7 +329,7 @@ export class File {
 
     if (opts.skipAll) return null;
 
-    if (!opts.allowMissingFileHeader) {
+    if (!isSkipped(opts, 'allowMissingFileHeader')) {
       const err = this.header.validateWith(opts);
       if (err) return err;
     }
@@ -340,18 +341,18 @@ export class File {
         );
       }
 
-      if (!opts.bypassBatchValidation) {
+      if (!isSkipped(opts, 'bypassBatchValidation')) {
         for (const b of this.batches) {
           const err = b.validate();
           if (err) return err;
         }
       }
 
-      if (!opts.allowMissingFileControl) {
+      if (!isSkipped(opts, 'allowMissingFileControl')) {
         const err = this.control.validate();
         if (err) return err;
       }
-      if (!opts.allowUnorderedBatchNumbers) {
+      if (!isSkipped(opts, 'allowUnorderedBatchNumbers')) {
         const err = this.isSequenceAscending();
         if (err) return err;
       }
@@ -364,7 +365,7 @@ export class File {
         'BatchCount', this.batches.length, this.advControl.batchCount,
       );
     }
-    if (!opts.allowMissingFileControl) {
+    if (!isSkipped(opts, 'allowMissingFileControl')) {
       const err = this.advControl.validate();
       if (err) return err;
     }
@@ -384,7 +385,7 @@ export class File {
     const errors: Error[] = [];
     const push = (err: Error | null | undefined) => { if (err) errors.push(err); };
 
-    if (!opts.allowMissingFileHeader) {
+    if (!isSkipped(opts, 'allowMissingFileHeader')) {
       errors.push(...this.header.validateAllWith(opts));
     }
 
@@ -395,16 +396,16 @@ export class File {
         ));
       }
 
-      if (!opts.bypassBatchValidation) {
+      if (!isSkipped(opts, 'bypassBatchValidation')) {
         for (const b of this.batches) {
           errors.push(...b.validateAll());
         }
       }
 
-      if (!opts.allowMissingFileControl) {
+      if (!isSkipped(opts, 'allowMissingFileControl')) {
         errors.push(...this.control.validateAll());
       }
-      if (!opts.allowUnorderedBatchNumbers) {
+      if (!isSkipped(opts, 'allowUnorderedBatchNumbers')) {
         push(this.isSequenceAscending());
       }
       errors.push(...this.validateAllTotals());
@@ -415,7 +416,7 @@ export class File {
           'BatchCount', this.batches.length, this.advControl.batchCount,
         ));
       }
-      if (!opts.allowMissingFileControl) {
+      if (!isSkipped(opts, 'allowMissingFileControl')) {
         errors.push(...this.advControl.validateAll());
       }
       errors.push(...this.validateAllTotals());
@@ -426,7 +427,7 @@ export class File {
       this.enrichFileError(err);
     }
 
-    return errors;
+    return applyErrorLevels(errors, this.validateOpts);
   }
 
   /** Enrich a single file-level error with positional data. */
@@ -518,7 +519,7 @@ export class File {
         count += iatBatch.control.entryAddendaCount;
       }
       if (this.control.entryAddendaCount !== count) {
-        if (this.validateOpts?.unequalAddendaCounts) return null;
+        if (isSkipped(this.validateOpts, 'unequalAddendaCounts')) return null;
         return new ErrFileCalculatedControlEquality('EntryAddendaCount', count, this.control.entryAddendaCount);
       }
     } else {
@@ -526,7 +527,7 @@ export class File {
         count += batch.getADVControl().entryAddendaCount;
       }
       if (this.advControl.entryAddendaCount !== count) {
-        if (this.validateOpts?.unequalAddendaCounts) return null;
+        if (isSkipped(this.validateOpts, 'unequalAddendaCounts')) return null;
         return new ErrFileCalculatedControlEquality('EntryAddendaCount', count, this.advControl.entryAddendaCount);
       }
     }
@@ -611,7 +612,7 @@ export class File {
     for (const batch of this.batches) {
       const header = batch.getHeader();
       const current = header.batchNumber;
-      if (!this.validateOpts?.customTraceNumbers) {
+      if (!isSkipped(this.validateOpts, 'customTraceNumbers')) {
         if (current <= lastSeq) {
           const err = new ErrFileBatchNumberAscending(lastSeq, current);
           err.line = header.lineNumber;

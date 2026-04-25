@@ -5,6 +5,7 @@ import {
 } from './constants.js';
 import { enrichErrors, enrichError, entryDetailFieldPositions } from './fieldPositions.js';
 import type { ValidateOpts } from './validateOpts.js';
+import { isSkipped, applyErrorLevel, applyErrorLevels } from './validateOpts.js';
 import { Converters, converters } from './utils/converters.js';
 import { Validators, validators, CalculateCheckDigit, readRunes } from './utils/validators.js';
 import {
@@ -142,8 +143,9 @@ export class EntryDetail {
 
   /** Validate performs NACHA format rule checks */
   validate(): Error | null {
-    const err = this._validate();
+    let err = this._validate();
     if (err) enrichError(err, this.lineNumber, entryDetailFieldPositions);
+    err = applyErrorLevel(err, this.validateOpts);
     return err;
   }
 
@@ -167,7 +169,7 @@ export class EntryDetail {
       return fieldError('Amount', new Error(`does not match formatted value ${this.amountField()}`), this.amount);
     }
 
-    if (!this.validateOpts?.allowSpecialCharacters) {
+    if (!isSkipped(this.validateOpts, 'allowSpecialCharacters')) {
       const acctErr = validators.isAlphanumeric(this.dfiAccountNumber);
       if (acctErr) return fieldError('DFIAccountNumber', acctErr, this.dfiAccountNumber);
 
@@ -181,7 +183,7 @@ export class EntryDetail {
       if (discErr) return fieldError('DiscretionaryData', discErr, this.discretionaryData);
     }
 
-    if (!this.validateOpts?.allowInvalidCheckDigit) {
+    if (!isSkipped(this.validateOpts, 'allowInvalidCheckDigit')) {
       const calculated = CalculateCheckDigit(this.rdfiIdentificationField());
       const edCheckDigit = parseInt(this.checkDigit, 10);
       if (isNaN(edCheckDigit)) {
@@ -219,14 +221,14 @@ export class EntryDetail {
       push(fieldError('Amount', new Error(`does not match formatted value ${this.amountField()}`), this.amount));
     }
 
-    if (!this.validateOpts?.allowSpecialCharacters) {
+    if (!isSkipped(this.validateOpts, 'allowSpecialCharacters')) {
       push(fieldError('DFIAccountNumber', validators.isAlphanumeric(this.dfiAccountNumber), this.dfiAccountNumber));
       push(fieldError('IdentificationNumber', validators.isAlphanumeric(this.identificationNumber), this.identificationNumber));
       push(fieldError('IndividualName', validators.isAlphanumeric(this.individualName), this.individualName));
       push(fieldError('DiscretionaryData', validators.isAlphanumeric(this.discretionaryData), this.discretionaryData));
     }
 
-    if (!this.validateOpts?.allowInvalidCheckDigit) {
+    if (!isSkipped(this.validateOpts, 'allowInvalidCheckDigit')) {
       const calculated = CalculateCheckDigit(this.rdfiIdentificationField());
       const edCheckDigit = parseInt(this.checkDigit, 10);
       if (isNaN(edCheckDigit)) {
@@ -236,7 +238,10 @@ export class EntryDetail {
       }
     }
 
-    return enrichErrors(errors, this.lineNumber, entryDetailFieldPositions);
+    return applyErrorLevels(
+      enrichErrors(errors, this.lineNumber, entryDetailFieldPositions),
+      this.validateOpts,
+    );
   }
 
   private fieldInclusion(): Error | null {

@@ -1,6 +1,7 @@
 import { entryAddendaPos } from '../constants.js';
 import { enrichErrors, enrichError, addenda16FieldPositions } from '../fieldPositions.js';
 import type { ValidateOpts } from '../validateOpts.js';
+import { isSkipped, applyErrorLevel, applyErrorLevels } from '../validateOpts.js';
 import { Converters, converters } from '../utils/converters.js';
 import { Validators, validators } from '../utils/validators.js';
 import {
@@ -50,8 +51,9 @@ export class Addenda16 {
   }
 
   validate(): Error | null {
-    const err = this._validate();
+    let err = this._validate();
     if (err) enrichError(err, this.lineNumber, addenda16FieldPositions);
+    err = applyErrorLevel(err, this.validateOpts);
     return err;
   }
 
@@ -61,7 +63,7 @@ export class Addenda16 {
 
     if (this.typeCode !== '16') return fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode);
 
-    if (!this.validateOpts?.allowSpecialCharacters) {
+    if (!isSkipped(this.validateOpts, 'allowSpecialCharacters')) {
       const cspErr = validators.isAlphanumeric(this.receiverCityStateProvince);
       if (cspErr) return fieldError('ReceiverCityStateProvince', cspErr, this.receiverCityStateProvince);
       const cpErr = validators.isAlphanumeric(this.receiverCountryPostalCode);
@@ -81,12 +83,15 @@ export class Addenda16 {
     if (this.entryDetailSequenceNumber < 0) push(fieldError('EntryDetailSequenceNumber', ErrConstructor, this.entryDetailSequenceNumberField()));
 
     if (this.typeCode !== '16') push(fieldError('TypeCode', ErrAddendaTypeCode, this.typeCode));
-    if (!this.validateOpts?.allowSpecialCharacters) {
+    if (!isSkipped(this.validateOpts, 'allowSpecialCharacters')) {
       push(fieldError('ReceiverCityStateProvince', validators.isAlphanumeric(this.receiverCityStateProvince), this.receiverCityStateProvince));
       push(fieldError('ReceiverCountryPostalCode', validators.isAlphanumeric(this.receiverCountryPostalCode), this.receiverCountryPostalCode));
     }
 
-    return enrichErrors(errors, this.lineNumber, addenda16FieldPositions);
+    return applyErrorLevels(
+      enrichErrors(errors, this.lineNumber, addenda16FieldPositions),
+      this.validateOpts,
+    );
   }
 
   private fieldInclusion(): Error | null {

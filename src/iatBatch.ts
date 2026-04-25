@@ -372,6 +372,34 @@ export class IATBatch {
     return errors;
   }
 
+  /** Per-entry SEC-specific validation checks for IAT entries. */
+  invalidEntries(): { entry: IATEntryDetail; error: Error }[] {
+    const out: { entry: IATEntryDetail; error: Error }[] = [];
+    for (const entry of this.entries) {
+      if (entry.addenda17.length > 2) {
+        out.push({ entry, error: this.error('Addenda17', new ErrBatchAddendaCount(entry.addenda17.length, 2)) });
+      }
+      if (entry.addenda18.length > 5) {
+        out.push({ entry, error: this.error('Addenda18', new ErrBatchAddendaCount(entry.addenda18.length, 5)) });
+      }
+      if (this.header.serviceClassCode === AutomatedAccountingAdvices) {
+        out.push({ entry, error: this.error('ServiceClassCode', ErrBatchServiceClassCode, this.header.serviceClassCode) });
+      }
+      if (entry.isCorrection() || entry.category === CategoryNOC) {
+        if (this.header.iatIndicator !== IATCOR) {
+          out.push({ entry, error: this.error('IATIndicator', new ErrBatchIATNOC(this.header.iatIndicator, IATCOR)) });
+        }
+        if (this.header.standardEntryClassCode !== COR) {
+          out.push({ entry, error: this.error('StandardEntryClassCode', new ErrBatchIATNOC(this.header.standardEntryClassCode, COR)) });
+        }
+        if (nocInvalidCodes.has(entry.transactionCode)) {
+          out.push({ entry, error: this.error('TransactionCode', ErrBatchTransactionCode, entry.transactionCode) });
+        }
+      }
+    }
+    return out;
+  }
+
   private isFieldInclusion(): Error | null {
     const hErr = this.header.validate();
     if (hErr) return hErr;

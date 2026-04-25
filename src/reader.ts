@@ -380,10 +380,14 @@ export class Reader {
           if (!this.skipBatchAccumulation) {
             this.file.addBatch(batch);
           }
-          const vErr = maybeValidate(batch as unknown as Validatable, this.file.validateOpts);
-          if (vErr) {
-            this.recordName = 'Batches';
-            return this.parseError(vErr);
+          // Skip batch-level validation in streaming mode (entries are cleared
+          // for O(1) memory so batch.validate() would give wrong results).
+          if (!this.skipBatchAccumulation) {
+            const vErr = maybeValidate(batch as unknown as Validatable, this.file.validateOpts);
+            if (vErr) {
+              this.recordName = 'Batches';
+              return this.parseError(vErr);
+            }
           }
         } else {
           const batch = this.iatCurrentBatch;
@@ -392,10 +396,12 @@ export class Reader {
           if (!this.skipBatchAccumulation) {
             this.file.addIATBatch(batch);
           }
-          const vErr = maybeValidate(batch, this.file.validateOpts);
-          if (vErr) {
-            this.recordName = 'Batches';
-            return this.parseError(vErr);
+          if (!this.skipBatchAccumulation) {
+            const vErr = maybeValidate(batch, this.file.validateOpts);
+            if (vErr) {
+              this.recordName = 'Batches';
+              return this.parseError(vErr);
+            }
           }
         }
         return null;

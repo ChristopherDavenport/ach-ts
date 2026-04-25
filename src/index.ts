@@ -27,4 +27,8 @@ export { Reader, readACHFile, readACHFiles, readRunes } from './reader.js';
 export { mergeFiles, mergeFilesWith, newMerger } from './merge.js';
 export type { Conditions, Merger } from './merge.js';
 export { Iterator, allSpaces } from './iterator.js';
+export { StreamingReader } from './streamingReader.js';
+export type { StreamingBatchHeader, StreamingEntryDetail } from './streamingReader.js';
+export { StreamingWriter } from './streamingWriter.js';
+export type { StreamingWriterOpts } from './streamingWriter.js';
 export { readDir, mergeDir, mergeDirWith } from './dir.js';

@@ -23,7 +23,8 @@ Requires Node.js 18+ and TypeScript 5.0+.
 - File segmentation (split by credit/debit)
 - Batch flattening (merge compatible batches)
 - Reversal generation (swap debit/credit transaction codes)
-- Memory-efficient streaming iteration over entries
+- Memory-efficient streaming iteration over entries (sync `Iterator` and async `StreamingReader`)
+- Constant-memory end-to-end streaming pipeline (`StreamingReader` → `StreamingWriter`) with full inline NACHA validation
 - Directory scanning and batch processing
 - TXP (tax payment) format parsing
 - Two-tier validation: fast-fail (`validate()`) and exhaustive (`validateAll()`)
@@ -166,6 +167,78 @@ while (true) {
 }
 ```
 
+### Stream large files (constant memory)
+
+For multi-GB files that won't fit in memory, use `StreamingReader` and `StreamingWriter` to process entries one at a time through an async pipeline:
+
+```typescript
+import { createReadStream, createWriteStream } from 'node:fs';
+import { createInterface } from 'node:readline';
+import { StreamingReader, StreamingWriter } from 'ach-ts';
+
+// Read → transform → write with O(1) memory
+const rl = createInterface({ input: createReadStream('input.ach') });
+const out = createWriteStream('output.ach');
+
+const sr = new StreamingReader(rl);
+const fileHeader = sr.getHeader(); // available after first entry is read
+
+// Collect the header first
+const firstResult = await sr.nextEntry();
+const header = sr.getHeader()!;
+const sw = new StreamingWriter(header, (line) => { out.write(line); });
+
+// Write the first entry
+if (firstResult[0] && firstResult[1]) {
+  await sw.writeEntry(firstResult[0], firstResult[1]);
+}
+
+// Stream remaining entries
+for await (const { batchHeader, entry } of sr.entries()) {
+  entry.amount += 100; // transform in-flight
+  await sw.writeEntry(batchHeader, entry);
+}
+
+await sw.close();
+out.end();
+```
+
+`StreamingReader` accepts any `AsyncIterable<string>` (e.g., `readline.Interface`, a custom line splitter over a network socket). `StreamingWriter` accepts any sync or async callback `(line: string) => void | Promise<void>`.
+
+Both support regular and IAT batches. `StreamingWriter` auto-detects batch transitions and computes BatchControl/FileControl totals on the fly.
+
+#### StreamingReader validation
+
+`StreamingReader` performs full NACHA validation using O(1) running accumulators — it never needs to hold all entries in memory. Validation covers:
+
+- Per-entry checks: trace number ascending order, trace number ODFI match, category consistency, addenda record indicators, addenda sequence numbers, `IndividualName` required for applicable SEC codes
+- SEC-specific rules: the same `invalidEntries()` checks as each batch subclass (PPD, CCD, WEB, IAT, etc.)
+- Batch boundary checks: header/control field matching (service class code, company identification, ODFI, batch number), entry hash, entry/addenda count, debit/credit totals, COR amount-zero rule, batch number ascending order
+- File boundary checks: batch count, entry/addenda count, entry hash, total debit/credit amounts
+
+Validation errors are returned inline as `[null, null, error]` tuples from `nextEntry()`. The `entries()` generator throws on the first validation error. To collect entries and errors separately:
+
+```typescript
+const sr = new StreamingReader(rl);
+const entries = [];
+const errors = [];
+
+for (;;) {
+  const [bh, entry, err] = await sr.nextEntry();
+  if (err) { errors.push(err); continue; }
+  if (!bh && !entry) break;
+  entries.push({ batchHeader: bh!, entry: entry! });
+}
+```
+
+Use `setValidation()` to customize validation behavior:
+
+```typescript
+sr.setValidation({ skipAll: true });              // disable all validation
+sr.setValidation({ bypassBatchValidation: true }); // skip batch-level checks
+sr.setValidation({ customTraceNumbers: true });    // allow non-ODFI trace numbers
+```
+
 ### Read a directory of ACH files
 
 ```typescript
@@ -294,7 +367,9 @@ ADV entries use separate record types with different field layouts, including 20
 | `mergeFiles(files)` | Merge files with default 10,000-line limit |
 | `mergeFilesWith(files, conditions)` | Merge with custom line/dollar limits |
 | `newMerger(opts)` | Create a Merger with custom ValidateOpts |
-| `Iterator` | Memory-efficient line-by-line entry processing |
+| `Iterator` | Memory-efficient synchronous entry iteration |
+| `StreamingReader` | Async streaming entry reader with full NACHA validation — accepts `AsyncIterable<string>` |
+| `StreamingWriter` | Async streaming entry writer — accepts `(line: string) => void \| Promise<void>` |
 | `readDir(path)` | Parse all ACH files in a directory |
 | `mergeDir(path)` | Read and merge all ACH files in a directory |
 | `mergeDirWith(path, conditions)` | Read and merge with custom limits |
@@ -325,6 +400,9 @@ ADV entries use separate record types with different field layouts, including 20
 | `ValidateOpts` | 23 boolean validation bypass flags + custom `checkTransactionCode` callback |
 | `Conditions` | Merge constraints: `maxLines`, `maxDollarAmount` |
 | `WriteOpts` | Writer configuration: `lineEnding` |
+| `StreamingWriterOpts` | StreamingWriter configuration: `lineEnding`, `bypassValidation` |
+| `StreamingBatchHeader` | Union type: `BatchHeader \| IATBatchHeader` |
+| `StreamingEntryDetail` | Union type: `EntryDetail \| IATEntryDetail` |
 | `Offset` | Offset record configuration: routing, account, type, description |
 
 ### Error Classes
@@ -503,7 +581,9 @@ src/
   reader.ts                ACH file parser
   writer.ts                ACH file writer
   merge.ts                 File merging with line/dollar limits
-  iterator.ts              Memory-efficient entry iterator
+  iterator.ts              Memory-efficient synchronous entry iterator
+  streamingReader.ts       Async streaming reader for large files
+  streamingWriter.ts       Async streaming writer for large files
   dir.ts                   Directory scanning utilities
 test/
   testdata/                ACH and JSON fixture files

@@ -5,14 +5,33 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
+  "files": [
+    "dist/",
+    "LICENSE.md",
+    "README.md",
+    "NOTICE",
+    "licenses/"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ChristopherDavenport/ach-ts.git"
+  },
+  "homepage": "https://github.com/ChristopherDavenport/ach-ts",
+  "bugs": {
+    "url": "https://github.com/ChristopherDavenport/ach-ts/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "keywords": ["ach", "nacha", "banking", "finance"],
-  "author": "",
-  "license": "Apache-2.0",
+  "author": "Christopher Davenport",
+  "license": "MIT",
   "devDependencies": {
     "@types/node": "^22.0.0",
     "typescript": "^5.0.0",

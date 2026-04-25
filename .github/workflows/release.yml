@@ -1,0 +1,39 @@
+name: Release
+
+permissions:
+  contents: read
+  id-token: write
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          
+      - name: Install Dependencies
+        run: npm install
+        
+      - name: Run Build
+        run: npm run build
+
+      - name: Run Tests
+        run: npm test
+
+      - name: Set Version from Tag
+        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version
+        
+      - name: Publish to NPM
+        run: npm publish --provenance --access public
+            

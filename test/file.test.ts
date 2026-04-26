@@ -371,6 +371,30 @@ describe('PPD Control Field Validation', () => {
     expect(file.control.blockCount).toBe(2); // 11 / 10 = 1.1 -> ceil = 2
   });
 
+  // TestFileBlockCountValidation
+  it('should error when blockCount does not match calculated value', () => {
+    const file = mockFilePPD();
+    file.control.blockCount = 99;
+    const err = file.validate();
+    expect(err).not.toBeNull();
+    expect(err!.message).toContain('BlockCount');
+  });
+
+  it('should return blockCount error in validateAll', () => {
+    const file = mockFilePPD();
+    file.control.blockCount = 99;
+    const errors = file.validateAll();
+    const blockErr = errors.find(e => e.message.includes('BlockCount'));
+    expect(blockErr).toBeDefined();
+  });
+
+  it('should skip blockCount check with unequalBlockCounts bypass', () => {
+    const file = mockFilePPD();
+    file.control.blockCount = 99;
+    file.setValidation({ unequalBlockCounts: true });
+    expect(file.validate()).toBeNull();
+  });
+
   // TestFileControlValidate
   it('should error on PPD File Control with invalid debit amount', () => {
     const file = mockFilePPD();

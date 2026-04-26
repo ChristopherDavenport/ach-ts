@@ -21,6 +21,7 @@ Requires Node.js 18+ and TypeScript 5.0+.
 - Automated Accounting Advices (ADV) records
 - File merging with line count and dollar amount limits
 - File segmentation (split by credit/debit)
+- File splitting by routing number, account, company, validity, or custom predicate
 - Batch flattening (merge compatible batches)
 - Reversal generation (swap debit/credit transaction codes)
 - Memory-efficient streaming iteration over entries (sync `Iterator` and async `StreamingReader`)
@@ -128,6 +129,46 @@ const [merged2, err2] = mergeFilesWith(files, {
   maxLines: 5000,
   maxDollarAmount: 1_000_000_00, // $1M in cents
 });
+```
+
+### Split files
+
+```typescript
+import { splitFile } from 'ach-ts';
+import type { SplitOptions } from 'ach-ts';
+
+// On-us split by RDFI routing number
+const [byRouting, err1] = splitFile(file, {
+  groupEntry: (entry) => entry.rdfiIdentification,
+});
+// Returns Map<string, File[]> keyed by routing number
+
+// Extract a specific account
+const [byAccount, err2] = splitFile(file, {
+  groupEntry: (entry) =>
+    entry.dfiAccountNumber.trim() === '123456789' ? 'target' : 'remainder',
+});
+
+// Split by originating company
+const [byCompany, err3] = splitFile(file, {
+  groupBatch: (header) => header.companyIdentification.trim(),
+});
+
+// Separate valid from invalid entries
+const [byValidity, err4] = splitFile(file, {
+  validateEntry: true,
+});
+// result.get('valid')  → File[] with valid entries
+// result.get('invalid') → File[] with invalid entries
+
+// Combine grouping with size constraints
+const [sized, err5] = splitFile(file, {
+  groupEntry: (entry) => entry.rdfiIdentification,
+  conditions: { maxEntries: 5000, maxDollarAmount: 99_999_999_99 },
+});
+
+// Also available as a method on File
+const [result, err6] = file.split({ groupBatch: (h) => h.companyName.trim() });
 ```
 
 ### Validate with custom options
@@ -352,7 +393,7 @@ ADV entries use separate record types with different field layouts, including 20
 
 | Export | Description |
 |--------|-------------|
-| `File` | Main file class: `create()`, `validate()`, `validateAll()`, `toJSON()`, `reversal()`, `segmentFile()`, `flattenBatches()` |
+| `File` | Main file class: `create()`, `validate()`, `validateAll()`, `toJSON()`, `reversal()`, `segmentFile()`, `split()`, `flattenBatches()` |
 | `newFile()` | Create a new empty File |
 | `fileFromJSON(json)` | Parse a JSON string into a File |
 | `fileFromJSONWith(json, opts)` | Parse JSON with custom ValidateOpts |
@@ -367,6 +408,7 @@ ADV entries use separate record types with different field layouts, including 20
 | `mergeFiles(files)` | Merge files with default 10,000-line limit |
 | `mergeFilesWith(files, conditions)` | Merge with custom line/dollar limits |
 | `newMerger(opts)` | Create a Merger with custom ValidateOpts |
+| `splitFile(file, options)` | Split a file by routing number, account, company, validity, or custom predicate |
 | `Iterator` | Memory-efficient synchronous entry iteration |
 | `StreamingReader` | Async streaming entry reader with full NACHA validation — accepts `AsyncIterable<string>` |
 | `StreamingWriter` | Async streaming entry writer — accepts `(line: string) => void \| Promise<void>` |
@@ -399,6 +441,8 @@ ADV entries use separate record types with different field layouts, including 20
 |------|-------------|
 | `ValidateOpts` | 23 boolean validation bypass flags + custom `checkTransactionCode` callback |
 | `Conditions` | Merge constraints: `maxLines`, `maxDollarAmount` |
+| `SplitOptions` | Split mode: `groupEntry`, `groupBatch`, `groupIATEntry`, `groupIATBatch`, `validateEntry`, `entryValidator`, `conditions` |
+| `SplitConditions` | Per-output-file limits: `maxLines`, `maxDollarAmount`, `maxEntries`, `maxBatches` |
 | `WriteOpts` | Writer configuration: `lineEnding` |
 | `StreamingWriterOpts` | StreamingWriter configuration: `lineEnding`, `bypassValidation` |
 | `StreamingBatchHeader` | Union type: `BatchHeader \| IATBatchHeader` |
@@ -577,9 +621,10 @@ src/
   iatBatchHeader.ts        IAT batch header
   iatEntryDetail.ts        IAT entry detail
   iatBatch.ts              IAT batch
-  file.ts                  File class (create, validate, JSON, segment, flatten, reverse)
+  file.ts                  File class (create, validate, JSON, segment, split, flatten, reverse)
   reader.ts                ACH file parser
   writer.ts                ACH file writer
+  split.ts                 File splitting by entry, batch, validity, or size constraints
   merge.ts                 File merging with line/dollar limits
   iterator.ts              Memory-efficient synchronous entry iterator
   streamingReader.ts       Async streaming reader for large files
@@ -587,12 +632,12 @@ src/
   dir.ts                   Directory scanning utilities
 test/
   testdata/                ACH and JSON fixture files
-  33 test files            Unit, integration, round-trip, crasher resilience
+  35 test files            Unit, integration, round-trip, crasher resilience
 ```
 
 ## Testing
 
-The test suite uses [Vitest](https://vitest.dev/) and contains 33 test files covering:
+The test suite uses [Vitest](https://vitest.dev/) and contains 35 test files covering:
 
 - **Unit tests** -- individual record types, converters, validators, addenda, batch types
 - **Integration tests** -- full ACH file round-trip (parse, create, validate, write, re-parse)

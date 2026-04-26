@@ -7,7 +7,7 @@ This is `ach-ts`, a TypeScript library for creating, parsing, validating, and wr
 ## Build and Test
 
 ```bash
-npm test          # vitest run (1,334 tests, ~1s)
+npm test          # vitest run (1,435 tests, ~1s)
 npm run build     # tsc → dist/
 npm run test:watch
 ```
@@ -38,11 +38,12 @@ Key files and their roles:
 
 | File | Purpose |
 |------|---------|
-| `src/file.ts` | `File` class: create, validate, JSON, segment, flatten, reverse. Largest source file. |
+| `src/file.ts` | `File` class: create, validate, JSON, segment, split, flatten, reverse. Largest source file. |
 | `src/reader.ts` | `Reader` class: parses fixed-width text into a `File`. Rune-by-rune scanning. |
 | `src/writer.ts` | `Writer` class: serializes a `File` to fixed-width text with block padding. |
 | `src/batch.ts` | `Batch` base class, `Batcher` interface, `newBatch()` factory, `Offset` type. |
 | `src/merge.ts` | `mergeFiles()`, `mergeFilesWith()` with `Conditions` (line/dollar limits). |
+| `src/split.ts` | `splitFile()` with `SplitOptions` (entry/batch/validity grouping + size constraints). |
 | `src/iterator.ts` | `Iterator` class for memory-efficient line-by-line entry processing. |
 | `src/dir.ts` | `readDir()`, `mergeDir()` async directory utilities. |
 | `src/constants.ts` | All SEC codes, transaction codes, service class codes, record positions. |
@@ -220,6 +221,7 @@ The `moov-ach/` directory, if present, contains the original Go source for refer
 | `converters.go` | `src/utils/converters.ts` |
 | `validators.go` | `src/utils/validators.ts` |
 | `fieldErrors.go` / `batchErrors.go` | `src/errors/index.ts` |
+| *(no Go equivalent)* | `src/split.ts` — TypeScript-only file splitting |
 
 ## Public API
 
@@ -229,7 +231,7 @@ All public exports are in `src/index.ts`. When adding new public types or functi
 
 - Fixed-width records are exactly 94 characters. `string()` methods must produce exactly 94 runes. Use `[...str].length` not `str.length` for Unicode-safe length checks.
 - Amounts are in cents (integer). `$1,000.00` = `100000`.
-- The `File` class stores regular batches in `batches: Batcher[]` and international batches separately in `iatBatches: IATBatch[]`. Both must be handled in file operations.
+- The `File` class stores regular batches in `batches: Batcher[]` and international batches separately in `iatBatches: IATBatch[]`. Both must be handled in file operations (split, merge, segment, flatten).
 - Addenda hydration from JSON must reconstruct typed class instances, not plain objects. See `hydrateAddenda*` functions in `src/file.ts`.
 - Batch numbers are 1-indexed and assigned during `File.create()`.
 - Writer pads files to block boundaries (multiples of 10 lines) with `9`-filled lines.

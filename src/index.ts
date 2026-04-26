@@ -31,4 +31,3 @@ export { StreamingReader } from './streamingReader.js';
 export type { StreamingBatchHeader, StreamingEntryDetail } from './streamingReader.js';
 export { StreamingWriter } from './streamingWriter.js';
 export type { StreamingWriterOpts } from './streamingWriter.js';
-export { readDir, mergeDir, mergeDirWith } from './dir.js';

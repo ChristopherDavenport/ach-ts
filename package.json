@@ -5,6 +5,16 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/dir.d.ts",
+      "import": "./dist/dir.js"
+    }
+  },
   "files": [
     "dist/",
     "LICENSE.md",

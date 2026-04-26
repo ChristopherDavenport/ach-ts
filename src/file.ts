@@ -46,6 +46,8 @@ import { Addenda16 } from './addenda/addenda16.js';
 import type { Batcher } from './batch.js';
 import { Batch, newBatch, convertBatchType } from './batch.js';
 import { Converters, converters } from './utils/converters.js';
+import { splitFile } from './split.js';
+import type { SplitOptions } from './split.js';
 import {
   FileError,
   ErrFileNoBatches,
@@ -984,6 +986,12 @@ export class File {
 
   flattenBatches(): [File | null, Error | null] {
     return flatten(this);
+  }
+
+  // --- Split ---
+
+  split(options: SplitOptions): [Map<string, File[]>, Error | null] {
+    return splitFile(this, options);
   }
 }
 

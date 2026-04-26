@@ -77,6 +77,9 @@ export interface ValidateOpts {
   /** UnequalAddendaCounts skips checking that Addenda Count fields match expected values. */
   unequalAddendaCounts?: boolean;
 
+  /** UnequalBlockCounts skips checking that BlockCount matches the calculated value from record counts. */
+  unequalBlockCounts?: boolean;
+
   /** PreserveSpaces keeps spacing before and after values that normally have spaces trimmed. */
   preserveSpaces?: boolean;
 

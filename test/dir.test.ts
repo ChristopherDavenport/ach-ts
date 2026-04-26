@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { readDir, mergeDir, mergeDirWith } from '../src/index.js';
+import { readDir, mergeDir, mergeDirWith } from '../src/dir.js';
 import '../src/batches/index.js';
 
 const testdataDir = path.join(__dirname, 'testdata');

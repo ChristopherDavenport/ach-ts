@@ -482,7 +482,9 @@ export class File {
       const bErr = b.validateTotals();
       if (bErr) return bErr;
     }
-    return this.isBatchCount(isADV);
+    const bcErr = this.isBatchCount(isADV);
+    if (bcErr) return bcErr;
+    return this.isBlockCount(isADV);
   }
 
   validateAllTotals(): Error[] {
@@ -499,6 +501,7 @@ export class File {
       errors.push(...b.validateAllTotals());
     }
     push(this.isBatchCount(isADV));
+    push(this.isBlockCount(isADV));
     return errors;
   }
 
@@ -507,6 +510,34 @@ export class File {
     const calculated = this.batches.length + this.iatBatches.length;
     if (calculated !== batchCount) {
       return new ErrFileCalculatedControlEquality('BatchCount', calculated, batchCount);
+    }
+    return null;
+  }
+
+  private isBlockCount(isADV: boolean): Error | null {
+    if (isSkipped(this.validateOpts, 'unequalBlockCounts')) return null;
+    const blockCount = isADV ? this.advControl.blockCount : this.control.blockCount;
+    // blockCount == 0 is caught by FileControl field inclusion; skip here to avoid double-reporting
+    if (blockCount === 0) return null;
+    // 2 = FileHeader + FileControl
+    let totalRecordsInFile = 2;
+    if (!isADV) {
+      for (const batch of this.batches) {
+        totalRecordsInFile += 2 + batch.getControl().entryAddendaCount;
+      }
+      for (const iatBatch of this.iatBatches) {
+        totalRecordsInFile += 2 + iatBatch.control.entryAddendaCount;
+      }
+    } else {
+      for (const batch of this.batches) {
+        totalRecordsInFile += 2 + batch.getADVControl().entryAddendaCount;
+      }
+    }
+    const calculated = totalRecordsInFile % 10 === 0
+      ? totalRecordsInFile / 10
+      : Math.floor(totalRecordsInFile / 10) + 1;
+    if (calculated !== blockCount) {
+      return new ErrFileCalculatedControlEquality('BlockCount', calculated, blockCount);
     }
     return null;
   }

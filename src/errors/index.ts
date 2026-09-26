@@ -291,6 +291,9 @@ Object.freeze(ErrBatchTransactionCode);
 export const ErrBatchTransactionCodeAddenda = new ACHError('this batch type does not allow an addenda for this transaction code');
 ErrBatchTransactionCodeAddenda.code = 'batchTransactionCodeAddenda';
 Object.freeze(ErrBatchTransactionCodeAddenda);
+export const ErrBatchReturnNOCAddenda = new ACHError('this transaction code is reserved for Return and Notification of Change entries and requires an Addenda98 or Addenda99 record');
+ErrBatchReturnNOCAddenda.code = 'batchReturnNOCAddenda';
+Object.freeze(ErrBatchReturnNOCAddenda);
 export const ErrBatchAmountNonZero = new ACHError('this batch type requires that the amount is zero');
 ErrBatchAmountNonZero.code = 'batchAmountNonZero';
 Object.freeze(ErrBatchAmountNonZero);
@@ -584,6 +587,22 @@ export class ErrFileBatchNumberAscending extends ACHError {
     this.name = 'ErrFileBatchNumberAscending';
     this.previousBatch = previous;
     this.currentBatch = current;
+  }
+}
+
+export class ErrFileDuplicateTraceNumber extends ACHError {
+  traceNumber: string;
+  override code = 'fileDuplicateTraceNumber';
+  /** 1-based line number in the ACH file */
+  line?: number;
+  /** 0-based inclusive start column */
+  startColumn?: number;
+  /** 0-based exclusive end column */
+  endColumn?: number;
+  constructor(trace: string) {
+    super(`Entry Detail Trace Number ${trace} is used more than once, trace numbers must be unique within a file`);
+    this.name = 'ErrFileDuplicateTraceNumber';
+    this.traceNumber = trace;
   }
 }
 

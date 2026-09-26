@@ -659,25 +659,31 @@ describe('Reader', () => {
     expect(err!.message).toContain('BatchCount');
   });
 
+  // These three IAT fixtures each carry two IAT batches whose entries reuse the
+  // same trace number, so they fail the file-wide trace uniqueness check. They
+  // are validated with customTraceNumbers so each test still covers what it is
+  // named for; see the dedicated duplicate-trace tests for that rule.
+  const iatDupTraceOpts = { customTraceNumbers: true };
+
   // ACH file with IAT only
   it('TestACHFileRead3 - reads file with IAT entries only', () => {
     const data = readTestFile('20180713-IAT.ach');
     const file = readACHFile(data);
-    expect(file.validate()).toBeNull();
+    expect(file.validateWith(iatDupTraceOpts)).toBeNull();
   });
 
   // IAT with Addenda17
   it('TestACHIATAddenda17 - reads IAT with Addenda17', () => {
     const data = readTestFile('20180716-IAT-A17.ach');
     const file = readACHFile(data);
-    expect(file.validate()).toBeNull();
+    expect(file.validateWith(iatDupTraceOpts)).toBeNull();
   });
 
   // IAT with Addenda17 and Addenda18
   it('TestACHIATAddenda1718 - reads IAT with Addenda17 and Addenda18', () => {
     const data = readTestFile('20180716-IAT-A17-A18.ach');
     const file = readACHFile(data);
-    expect(file.validate()).toBeNull();
+    expect(file.validateWith(iatDupTraceOpts)).toBeNull();
   });
 
   // IAT invalid batch header
@@ -982,6 +988,7 @@ describe('Reader', () => {
     // Forward entry
     const forwardEntry = mockEntryDetail();
     forwardEntry.dfiAccountNumber = '1';
+    forwardEntry.traceNumber = '121042880000001';
     forwardEntry.category = CategoryForward;
     forwardEntry.discretionaryData = '01';
     const forwardBh = mockBatchWEBHeader();
@@ -995,6 +1002,7 @@ describe('Reader', () => {
     // Return entry
     const returnEntry = mockEntryDetail();
     returnEntry.dfiAccountNumber = '2';
+    returnEntry.traceNumber = '121042880000002';
     returnEntry.addenda99 = mockAddenda99();
     returnEntry.addendaRecordIndicator = 1;
     returnEntry.category = CategoryReturn;
@@ -1009,6 +1017,7 @@ describe('Reader', () => {
     // Dishonored Return entry
     const dishonoredEntry = mockEntryDetail();
     dishonoredEntry.dfiAccountNumber = '3';
+    dishonoredEntry.traceNumber = '121042880000003';
     dishonoredEntry.addenda99Dishonored = mockAddenda99Dishonored();
     dishonoredEntry.addendaRecordIndicator = 1;
     dishonoredEntry.category = CategoryDishonoredReturn;
@@ -1023,6 +1032,7 @@ describe('Reader', () => {
     // NOC entry
     const nocEntry = mockCOREntryDetail();
     nocEntry.dfiAccountNumber = '5';
+    nocEntry.traceNumber = '121042880000005';
     nocEntry.addenda98 = mockAddenda98();
     nocEntry.addendaRecordIndicator = 1;
     nocEntry.category = CategoryNOC;
@@ -1037,6 +1047,7 @@ describe('Reader', () => {
     // Forward IAT entry
     const forwardIATEntry = mockIATEntryDetailWithAddendas();
     forwardIATEntry.dfiAccountNumber = '6';
+    forwardIATEntry.traceNumber = '231380100000006';
     forwardIATEntry.category = CategoryForward;
     const forwardIATBatch = new IATBatch(mockIATBatchHeaderFF());
     forwardIATBatch.addEntry(forwardIATEntry);
@@ -1080,6 +1091,7 @@ describe('Reader', () => {
     // Forward entry
     const forwardEntry = mockEntryDetail();
     forwardEntry.dfiAccountNumber = '1';
+    forwardEntry.traceNumber = '121042880000001';
     forwardEntry.category = CategoryForward;
     forwardEntry.discretionaryData = '01';
     const forwardBh = mockBatchWEBHeader();
@@ -1091,6 +1103,7 @@ describe('Reader', () => {
     // DishonoredReturnContested entry
     const contestedEntry = mockEntryDetail();
     contestedEntry.dfiAccountNumber = '4';
+    contestedEntry.traceNumber = '121042880000004';
     contestedEntry.addenda99Contested = mockAddenda99Contested();
     contestedEntry.addendaRecordIndicator = 1;
     contestedEntry.category = CategoryDishonoredReturnContested;

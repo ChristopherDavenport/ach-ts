@@ -1005,3 +1005,67 @@ describe('Batch', () => {
     expect(createErr2!.message).toContain('routing');
   });
 });
+
+// =========================================================================
+// Return / Notification of Change entries must carry an Addenda98 or Addenda99
+//
+// The Category field is only populated from an attached addenda record, so a
+// Return or NOC transaction code with no addenda parses as a Forward entry and
+// slips past isCategory alongside genuine forward entries.
+// =========================================================================
+describe('Batch return/NOC addenda requirement', () => {
+  const returnNOCCodes = [
+    CheckingReturnNOCCredit, CheckingReturnNOCDebit,
+  ];
+
+  for (const tc of returnNOCCodes) {
+    it(`errors on transaction code ${tc} with no Addenda98 or Addenda99`, () => {
+      const [batch] = newBatch(mockBatchHeader(PPD, MixedDebitsAndCredits));
+      batch!.addEntry(mockEntry(100000, tc));
+      batch!.create();
+
+      const err = batch!.validate();
+      expect(err).not.toBeNull();
+      expect(err!.message).toContain('Addenda98 or Addenda99');
+    });
+  }
+
+  it('accepts a return transaction code carrying an Addenda99', () => {
+    const [batch] = newBatch(mockBatchHeader(PPD, MixedDebitsAndCredits));
+    const entry = mockEntry(100000, CheckingReturnNOCDebit);
+    entry.addenda99 = newAddenda99();
+    entry.addenda99.typeCode = '99';
+    entry.addenda99.returnCode = 'R01';
+    entry.addenda99.originalTrace = '121042880000001';
+    entry.addenda99.originalDFI = '12104288';
+    entry.addenda99.traceNumber = '121042880000001';
+    entry.addendaRecordIndicator = 1;
+    entry.category = CategoryReturn;
+    batch!.addEntry(entry);
+    batch!.create();
+
+    expect(batch!.validate()).toBeNull();
+  });
+
+  it('catches a return entry hiding in a forward batch', () => {
+    const [batch] = newBatch(mockBatchHeader(PPD, MixedDebitsAndCredits));
+    batch!.addEntry(mockEntry(100000, CheckingCredit));
+    const sneaky = mockEntry(100000, CheckingReturnNOCDebit);
+    sneaky.traceNumber = '121042880000002';
+    batch!.addEntry(sneaky);
+    batch!.create();
+
+    const err = batch!.validate();
+    expect(err).not.toBeNull();
+    expect(err!.message).toContain('Addenda98 or Addenda99');
+  });
+
+  it('reports the same problem through validateAll', () => {
+    const [batch] = newBatch(mockBatchHeader(PPD, MixedDebitsAndCredits));
+    batch!.addEntry(mockEntry(100000, CheckingReturnNOCDebit));
+    batch!.create();
+
+    const errors = batch!.validateAll();
+    expect(errors.some(e => e.message.includes('Addenda98 or Addenda99'))).toBe(true);
+  });
+});

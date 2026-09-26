@@ -111,7 +111,9 @@ function mockEntryDetail(): EntryDetail {
   ed.dfiAccountNumber = '123456789';
   ed.amount = 100000000;
   ed.individualName = 'Wade Arnold';
-  ed.traceNumber = '121042880000001';
+  // Trace number left unset so Batch.build assigns it and File.create
+  // sequences it across the file. For a single-batch file this still yields
+  // 121042880000001 (ODFI 12104288 + sequence 1).
   return ed;
 }
 
@@ -1696,6 +1698,9 @@ describe('Flatten Batches (ACH-based)', () => {
   it('should flatten file with one IAT batch header', () => {
     const data = readTestdata('flattenIATBatchesOneBatchHeader.ach');
     const file = readACHFile(data);
+    // This fixture's IAT batches reuse the same trace number, which is unique
+    // per file rather than per batch, so flattening it needs customTraceNumbers.
+    file.setValidation({ customTraceNumbers: true });
 
     const [flattened, err] = file.flattenBatches();
     expect(err).toBeNull();
@@ -1742,5 +1747,104 @@ describe('Flatten Batches (ACH-based)', () => {
     expect(flattened!.validate()).toBeNull();
     expect(flattened!.batches.length).toBe(1);
     expect(flattened!.batches[0].getEntries().length).toBe(6);
+  });
+});
+
+// =========================================================================
+// Trace number uniqueness across the file
+//
+// Nacha scopes Entry Detail Trace Number uniqueness to the file, not the
+// batch: "Assigned by the ODFI in ascending sequence that uniquely identifies
+// each entry within a batch and the file." Batch.build numbers each batch from
+// 1, so File.create continues the sequence across batch boundaries and
+// File.validate rejects any duplicate that remains.
+// =========================================================================
+describe('File trace number uniqueness', () => {
+  it('continues the trace sequence across batches instead of restarting', () => {
+    const file = mockFilePPD();
+    file.addBatch(mockBatchPPD());
+    expect(file.create()).toBeNull();
+
+    const traces = file.batches.flatMap(b => b.getEntries().map(e => e.traceNumber));
+    expect(traces).toEqual(['121042880000001', '121042880000002']);
+    expect(file.validate()).toBeNull();
+  });
+
+  it('keeps the sequence ascending across many batches', () => {
+    const file = mockFilePPD();
+    for (let i = 0; i < 4; i++) file.addBatch(mockBatchPPD());
+    expect(file.create()).toBeNull();
+
+    const traces = file.batches.flatMap(b => b.getEntries().map(e => e.traceNumber));
+    expect(traces).toEqual([
+      '121042880000001', '121042880000002', '121042880000003',
+      '121042880000004', '121042880000005',
+    ]);
+    expect(new Set(traces).size).toBe(traces.length);
+  });
+
+  it('leaves caller-supplied trace numbers alone', () => {
+    const file = mockFilePPD();
+    // Set the trace number before the batch is built: Batch.build only assigns
+    // one when the entry does not already carry the batch header's ODFI, so
+    // this entry is never marked auto-assigned and File.create skips it.
+    const [batch] = newBatch(mockBatchPPDHeader());
+    const entry = mockEntryDetail();
+    entry.traceNumber = '121042889999999';
+    batch!.addEntry(entry);
+    expect(batch!.create()).toBeNull();
+    file.addBatch(batch!);
+    expect(file.create()).toBeNull();
+
+    const traces = file.batches.flatMap(b => b.getEntries().map(e => e.traceNumber));
+    expect(traces).toEqual(['121042880000001', '121042889999999']);
+  });
+
+  it('errors when two batches carry the same trace number', () => {
+    const file = mockFilePPD();
+    const batch = mockBatchPPD();
+    file.addBatch(batch);
+    expect(file.create()).toBeNull();
+    // Force the collision back in after create() has sequenced them
+    file.batches[1].getEntries()[0].traceNumber =
+      file.batches[0].getEntries()[0].traceNumber;
+
+    const err = file.validate();
+    expect(err).not.toBeNull();
+    expect(err!.message).toContain('used more than once');
+    expect((err as { traceNumber?: string }).traceNumber).toBe('121042880000001');
+  });
+
+  it('reports the duplicate through validateAll', () => {
+    const file = mockFilePPD();
+    file.addBatch(mockBatchPPD());
+    expect(file.create()).toBeNull();
+    file.batches[1].getEntries()[0].traceNumber =
+      file.batches[0].getEntries()[0].traceNumber;
+
+    const errors = file.validateAll();
+    expect(errors.some(e => e.message.includes('used more than once'))).toBe(true);
+  });
+
+  it('bypasses the check with customTraceNumbers', () => {
+    const file = mockFilePPD();
+    file.addBatch(mockBatchPPD());
+    expect(file.create()).toBeNull();
+    file.batches[1].getEntries()[0].traceNumber =
+      file.batches[0].getEntries()[0].traceNumber;
+
+    expect(file.validateWith({ customTraceNumbers: true })).toBeNull();
+  });
+
+  it('annotates the duplicate with the trace number columns', () => {
+    const file = mockFilePPD();
+    file.addBatch(mockBatchPPD());
+    expect(file.create()).toBeNull();
+    file.batches[1].getEntries()[0].traceNumber =
+      file.batches[0].getEntries()[0].traceNumber;
+
+    const err = file.validate() as { startColumn?: number; endColumn?: number };
+    expect(err.startColumn).toBe(79);
+    expect(err.endColumn).toBe(94);
   });
 });

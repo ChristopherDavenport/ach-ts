@@ -76,6 +76,19 @@ const validACHFiles = [
   'flattenADVBatchesOneBatchHeader.ach',
 ];
 
+/**
+ * Fixtures whose batches reuse the same Entry Detail Trace Number. Nacha scopes
+ * trace number uniqueness to the file, so these fail the uniqueness check; they
+ * are round-tripped with customTraceNumbers so the test still covers parsing
+ * and serialization.
+ */
+const duplicateTraceNumberFiles = new Set([
+  '20180713-IAT.ach',
+  '20180716-IAT-A17.ach',
+  '20180716-IAT-A17-A18.ach',
+  'flattenIATBatchesOneBatchHeader.ach',
+]);
+
 // =========================================================================
 // Round-trip: parse → create → validate → write → re-parse → compare
 // =========================================================================
@@ -89,6 +102,9 @@ describe('ACH round-trip integration', () => {
     it('round-trips through write → re-parse', () => {
       const data = readFixture(filename);
       const file1 = readACHFile(data);
+      if (duplicateTraceNumberFiles.has(filename)) {
+        file1.setValidation({ customTraceNumbers: true });
+      }
 
       const written = writeFile(file1);
       expect(written.length).toBeGreaterThan(0);

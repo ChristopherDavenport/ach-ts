@@ -49,12 +49,17 @@ describe('mergeDir', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  // ppd-debit.ach and ppd-credit.ach both use trace 121042880000001, and
+  // merging preserves source trace numbers rather than reassigning them, so the
+  // merged file repeats it. Validated with customTraceNumbers for that reason.
+  const mergedTraceOpts = { customTraceNumbers: true };
+
   it('should read and merge ACH files from a directory', async () => {
     const [merged, err] = await mergeDir(tmpDir);
     expect(err).toBeNull();
     expect(merged.length).toBeGreaterThan(0);
     for (const f of merged) {
-      expect(f.validate()).toBeNull();
+      expect(f.validateWith(mergedTraceOpts)).toBeNull();
     }
   });
 
@@ -63,7 +68,7 @@ describe('mergeDir', () => {
     expect(err).toBeNull();
     expect(merged.length).toBeGreaterThan(0);
     for (const f of merged) {
-      expect(f.validate()).toBeNull();
+      expect(f.validateWith(mergedTraceOpts)).toBeNull();
     }
   });
 

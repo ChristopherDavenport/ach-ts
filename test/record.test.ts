@@ -149,6 +149,9 @@ describe('Record', () => {
     expect(err2).toBeNull();
 
     const entry2 = mockWEBEntryDetail();
+    // Distinct from the PPD entry above: trace numbers are unique file-wide,
+    // not per batch.
+    entry2.traceNumber = '121042880000002';
     entry2.addendaRecordIndicator = 1;
     const addendaWEB = newAddenda05();
     addendaWEB.paymentRelatedInformation = 'Monthly Membership Subscription';

@@ -69,6 +69,13 @@ export class EntryDetail {
   validateOpts?: ValidateOpts;
   /** SEC code set from batch context */
   secCode = '';
+  /**
+   * True when Batch.build assigned the trace number rather than the caller.
+   * File.create renumbers these across the whole file so that trace numbers
+   * stay unique file-wide; caller-supplied trace numbers are left untouched.
+   * Internal, omitted from JSON output.
+   */
+  traceNumberAutoAssigned = false;
 
   /** Set the SEC code */
   setSECCode(code: string): void {

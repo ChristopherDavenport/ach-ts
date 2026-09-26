@@ -243,8 +243,10 @@ export class IATBatch {
       if (currentTraceODFI !== batchHeaderODFI) {
         if (!this.validateOpts) {
           this.entries[i].setTraceNumber(this.header.odfiIdentification, seq);
+          this.entries[i].traceNumberAutoAssigned = true;
         } else if (!this.validateOpts.bypassOriginValidation && !this.validateOpts.customTraceNumbers) {
           this.entries[i].setTraceNumber(this.header.odfiIdentification, seq);
+          this.entries[i].traceNumberAutoAssigned = true;
         }
       }
 

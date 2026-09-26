@@ -7,7 +7,7 @@ This is `ach-ts`, a TypeScript library for creating, parsing, validating, and wr
 ## Build and Test
 
 ```bash
-npm test          # vitest run (1,435 tests, ~1s)
+npm test          # vitest run (1,457 tests, ~1s)
 npm run build     # tsc → dist/
 npm run test:watch
 ```

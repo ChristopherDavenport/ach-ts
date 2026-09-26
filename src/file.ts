@@ -54,6 +54,7 @@ import {
   ErrFileADVOnly,
   ErrFileCalculatedControlEquality,
   ErrFileBatchNumberAscending,
+  ErrFileDuplicateTraceNumber,
   ErrInvalidJSON,
   ACHError,
 } from './errors/index.js';
@@ -220,6 +221,8 @@ export class File {
       }
     }
 
+    this.resequenceTraceNumbers();
+
     if (!this.isADV()) {
       // add 2 for FileHeader/FileControl
       let totalRecordsInFile = 2;
@@ -358,6 +361,10 @@ export class File {
         const err = this.isSequenceAscending();
         if (err) return err;
       }
+      if (!isSkipped(opts, 'customTraceNumbers')) {
+        const err = this.isTraceNumberUnique();
+        if (err) return err;
+      }
       return this.validateTotals();
     }
 
@@ -410,6 +417,9 @@ export class File {
       if (!isSkipped(opts, 'allowUnorderedBatchNumbers')) {
         push(this.isSequenceAscending());
       }
+      if (!isSkipped(opts, 'customTraceNumbers')) {
+        push(this.isTraceNumberUnique());
+      }
       errors.push(...this.validateAllTotals());
     } else {
       // ADV file
@@ -460,6 +470,11 @@ export class File {
     }
     if (err instanceof ErrFileBatchNumberAscending && err.startColumn === undefined) {
       err.startColumn = 0;
+      err.endColumn = 94;
+    }
+    if (err instanceof ErrFileDuplicateTraceNumber && err.startColumn === undefined) {
+      // Trace Number occupies positions 80-94 of an Entry Detail record
+      err.startColumn = 79;
       err.endColumn = 94;
     }
   }
@@ -638,6 +653,82 @@ export class File {
       }
     }
     return converters.leastSignificantDigits(hash, 10);
+  }
+
+  /**
+   * resequenceTraceNumbers renumbers auto-assigned Entry Detail Trace Numbers
+   * in one ascending sequence across the whole file.
+   *
+   * Batch.build assigns trace numbers starting from 1 within each batch, which
+   * is correct for a batch in isolation but makes every batch of a multi-batch
+   * file restart at ...0000001. Nacha scopes trace number uniqueness to the
+   * file, not the batch, so the sequence has to continue across batch
+   * boundaries. Trace numbers supplied by the caller are left untouched.
+   */
+  private resequenceTraceNumbers(): void {
+    let seq = 1;
+    const odfi = (trace: string) => trace.substring(0, 8);
+    for (const batch of this.batches) {
+      for (const entry of batch.getEntries()) {
+        if (entry.traceNumberAutoAssigned) {
+          entry.setTraceNumber(odfi(entry.traceNumber), seq);
+          const edSeq = converters.parseNumField(entry.traceNumberField().substring(8));
+          for (const a of entry.addenda05) a.entryDetailSequenceNumber = edSeq;
+        }
+        seq++;
+      }
+    }
+    for (const iatBatch of this.iatBatches) {
+      for (const entry of iatBatch.entries) {
+        if (entry.traceNumberAutoAssigned) {
+          entry.setTraceNumber(odfi(entry.traceNumber), seq);
+          const edSeq = converters.parseNumField(entry.traceNumberField().substring(8));
+          if (entry.addenda10) entry.addenda10.entryDetailSequenceNumber = edSeq;
+          if (entry.addenda11) entry.addenda11.entryDetailSequenceNumber = edSeq;
+          if (entry.addenda12) entry.addenda12.entryDetailSequenceNumber = edSeq;
+          if (entry.addenda13) entry.addenda13.entryDetailSequenceNumber = edSeq;
+          if (entry.addenda14) entry.addenda14.entryDetailSequenceNumber = edSeq;
+          if (entry.addenda15) entry.addenda15.entryDetailSequenceNumber = edSeq;
+          if (entry.addenda16) entry.addenda16.entryDetailSequenceNumber = edSeq;
+          for (const a of entry.addenda17) a.entryDetailSequenceNumber = edSeq;
+          for (const a of entry.addenda18) a.entryDetailSequenceNumber = edSeq;
+        }
+        seq++;
+      }
+    }
+  }
+
+  /**
+   * isTraceNumberUnique verifies that no Entry Detail Trace Number is used
+   * twice within the file. Batch.isSequenceAscending only orders trace numbers
+   * within a single batch, so a file whose batches each restart their trace
+   * sequence at 1 passes batch validation while carrying duplicate trace
+   * numbers. Regular and IAT batches share one trace number space.
+   */
+  private isTraceNumberUnique(): Error | null {
+    const seen = new Set<string>();
+    const check = (trace: string, line: number): Error | null => {
+      if (seen.has(trace)) {
+        const err = new ErrFileDuplicateTraceNumber(trace);
+        err.line = line;
+        return err;
+      }
+      seen.add(trace);
+      return null;
+    };
+    for (const batch of this.batches) {
+      for (const entry of batch.getEntries()) {
+        const err = check(entry.traceNumber, entry.lineNumber);
+        if (err) return err;
+      }
+    }
+    for (const iatBatch of this.iatBatches) {
+      for (const entry of iatBatch.entries) {
+        const err = check(entry.traceNumber, entry.lineNumber);
+        if (err) return err;
+      }
+    }
+    return null;
   }
 
   private isSequenceAscending(): Error | null {
@@ -1114,7 +1205,8 @@ function goRemapKeys(
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
     // Skip internal fields that should not appear in JSON
-    if (k === 'validators' || k === 'converters' || k === 'validateOpts') continue;
+    if (k === 'validators' || k === 'converters' || k === 'validateOpts'
+      || k === 'traceNumberAutoAssigned') continue;
     const mapped = extraMap?.[k] ?? reverseJsonKeyMap[k] ?? k;
     if (v && typeof v === 'object' && !Array.isArray(v)) {
       out[mapped] = goRemapKeys(v, extraMap);
@@ -1134,7 +1226,8 @@ function remapKeys(
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(obj)) {
     // Skip internal/private fields that should not be assigned to class instances
-    if (k === 'validators' || k === 'converters' || k === 'validateOpts') continue;
+    if (k === 'validators' || k === 'converters' || k === 'validateOpts'
+      || k === 'traceNumberAutoAssigned') continue;
     const mapped = extraMap?.[k] ?? jsonKeyMap[k] ?? k;
     // Recursively remap nested objects (addenda records, etc.)
     if (v && typeof v === 'object' && !Array.isArray(v)) {

@@ -5,6 +5,7 @@ import {
   CategoryNOC,
   entryDetailPos, entryAddendaPos, batchControlPos,
   batchHeaderPos, fileControlPos,
+  isReturnNOCTransactionCode,
 } from './constants.js';
 import type { ValidateOpts } from './validateOpts.js';
 import { File } from './file.js';
@@ -33,6 +34,8 @@ import {
   ErrBatchAddendaIndicator,
   ErrBatchOriginatorDNE,
   ErrBatchCategory,
+  ErrBatchReturnNOCAddenda,
+  ErrFileDuplicateTraceNumber,
   ErrBatchAmountNonZero,
   ErrFileCalculatedControlEquality,
   ErrFileBatchNumberAscending,
@@ -89,6 +92,13 @@ export class StreamingReader {
   private batchCategory = '';
   private batchHasEntries = false;
   private currentBatchHeader: StreamingBatchHeader | null = null;
+
+  /**
+   * Every trace number seen so far in this file. Unlike lastTraceNumber this is
+   * not reset per batch: Nacha scopes trace number uniqueness to the file, so a
+   * duplicate hidden behind a batch boundary still has to be caught.
+   */
+  private seenTraceNumbers = new Set<string>();
 
   // File-level accumulators
   private fileBatchCount = 0;
@@ -302,8 +312,28 @@ export class StreamingReader {
     this.currentBatchHeader = null;
   }
 
+  /**
+   * checkTraceNumberUnique reports an entry whose trace number has already been
+   * seen in this file.
+   *
+   * Deliberately not gated on skipBatchValidation: uniqueness is a property of
+   * the file rather than of any one batch, so bypassing batch validation must
+   * not turn it off. File.isTraceNumberUnique behaves the same way.
+   */
+  private checkTraceNumberUnique(entry: StreamingEntryDetail): void {
+    if (this.skipValidation || this.opts?.customTraceNumbers) return;
+    const tn = entry.traceNumber;
+    if (this.seenTraceNumbers.has(tn)) {
+      this.pendingErrors.push(new ErrFileDuplicateTraceNumber(tn));
+    } else {
+      this.seenTraceNumbers.add(tn);
+    }
+  }
+
   /** Run per-entry validation checks (from Batch.verify). */
   private runPerEntryChecks(entry: StreamingEntryDetail, bh: StreamingBatchHeader): void {
+    this.checkTraceNumberUnique(entry);
+
     if (this.skipValidation || this.skipBatchValidation || this.fakedBatch) return;
     const opts = this.opts;
 
@@ -315,6 +345,17 @@ export class StreamingReader {
           new ErrBatchAscending(this.lastTraceNumber, tn)));
       }
       this.lastTraceNumber = tn;
+    }
+
+    // A Return or NOC transaction code has to carry the Addenda98/99 that
+    // identifies it; without one the entry reads as a Forward entry and the
+    // category check below cannot tell it apart from the rest of the batch.
+    if (entry instanceof EntryDetail && isReturnNOCTransactionCode(entry.transactionCode)) {
+      const hasAddenda = entry.addenda98 || entry.addenda98Refused || entry.addenda99
+        || entry.addenda99Dishonored || entry.addenda99Contested;
+      if (!hasAddenda) {
+        this.pendingErrors.push(this.batchError(bh, 'TransactionCode', ErrBatchReturnNOCAddenda));
+      }
     }
 
     // Trace number ODFI match

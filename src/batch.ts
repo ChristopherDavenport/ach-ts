@@ -17,6 +17,7 @@ import {
   CategoryForward, CategoryReturn, CategoryNOC,
   CategoryDishonoredReturn, CategoryDishonoredReturnContested,
   OffsetChecking, OffsetSavings,
+  isReturnNOCTransactionCode,
 } from './constants.js';
 import type { OffsetAccountType } from './constants.js';
 import type { ValidateOpts } from './validateOpts.js';
@@ -33,7 +34,8 @@ import {
   FieldError,
   ErrBatchNoEntries, ErrBatchADVCount, ErrBatchAddendaIndicator,
   ErrBatchOriginatorDNE, ErrBatchSECType, ErrBatchServiceClassCode,
-  ErrBatchTransactionCode, ErrBatchAmountNonZero, ErrBatchAmountZero,
+  ErrBatchTransactionCode, ErrBatchReturnNOCAddenda,
+  ErrBatchAmountNonZero, ErrBatchAmountZero,
   ErrBatchDebitOnly, ErrBatchCheckSerialNumber, ErrBatchAddendaCategory,
   ErrBatchInvalidCardTransactionType,
   ErrBatchCompanyEntryDescriptionAutoenroll, ErrBatchCompanyEntryDescriptionREDEPCHECK,
@@ -301,9 +303,11 @@ export class Batch implements Batcher {
         if (currentTraceODFI !== batchHeaderODFI) {
           if (!this.validateOpts) {
             entry.setTraceNumber(this.header.odfiIdentification, seq);
+            entry.traceNumberAutoAssigned = true;
           } else {
             if (!this.validateOpts.bypassOriginValidation && !this.validateOpts.customTraceNumbers) {
               entry.setTraceNumber(this.header.odfiIdentification, seq);
+              entry.traceNumberAutoAssigned = true;
             }
           }
         }
@@ -432,6 +436,9 @@ export class Batch implements Batcher {
       if (err) return err;
     }
 
+    err = this.isReturnNOCAddenda();
+    if (err) return err;
+
     err = this.isCategory();
     if (err) return err;
 
@@ -527,6 +534,7 @@ export class Batch implements Batcher {
       push(this.isAddendaSequence());
     }
 
+    push(this.isReturnNOCAddenda());
     push(this.isCategory());
 
     // Enrich BatchError instances with positional data
@@ -736,6 +744,24 @@ export class Batch implements Batcher {
       if (entry.addenda99Contested && entry.addendaRecordIndicator !== 1) {
         return this.batchError('AddendaRecordIndicator', ErrBatchAddendaIndicator);
       }
+    }
+    return null;
+  }
+
+  /**
+   * isReturnNOCAddenda verifies that every entry carrying a Return or
+   * Notification of Change transaction code also carries the Addenda98 or
+   * Addenda99 record that identifies it. Without that addenda the entry parses
+   * as a Forward entry, so isCategory cannot tell it apart from the rest of the
+   * batch and a return silently rides along with forward entries.
+   */
+  private isReturnNOCAddenda(): Error | null {
+    if (this.isADV()) return null;
+    for (const entry of this.entries) {
+      if (!isReturnNOCTransactionCode(entry.transactionCode)) continue;
+      if (entry.addenda98 || entry.addenda98Refused || entry.addenda99
+        || entry.addenda99Dishonored || entry.addenda99Contested) continue;
+      return this.batchError('TransactionCode', ErrBatchReturnNOCAddenda, entry.transactionCode);
     }
     return null;
   }

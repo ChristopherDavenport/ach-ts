@@ -389,6 +389,8 @@ describe('Writer', () => {
     iatBatch2.addEntry(mockIATEntryDetail());
     iatBatch2.entries[0].transactionCode = CheckingDebit;
     iatBatch2.entries[0].amount = 2000;
+    // Distinct from the first IAT batch: trace numbers are unique file-wide.
+    iatBatch2.entries[0].traceNumber = '231380100000002';
     iatBatch2.entries[0].addenda10 = mockAddenda10();
     iatBatch2.entries[0].addenda11 = mockAddenda11();
     iatBatch2.entries[0].addenda12 = mockAddenda12();
@@ -463,6 +465,8 @@ describe('Writer', () => {
     iatBatch2.addEntry(mockIATEntryDetail());
     iatBatch2.entries[0].transactionCode = CheckingDebit;
     iatBatch2.entries[0].amount = 2000;
+    // Distinct from the first IAT batch: trace numbers are unique file-wide.
+    iatBatch2.entries[0].traceNumber = '231380100000002';
     iatBatch2.entries[0].addenda10 = mockAddenda10();
     iatBatch2.entries[0].addenda11 = mockAddenda11();
     iatBatch2.entries[0].addenda12 = mockAddenda12();

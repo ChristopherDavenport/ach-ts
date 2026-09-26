@@ -53,6 +53,11 @@ export class IATEntryDetail {
   category = CategoryForward;
   lineNumber = 0;
   validateOpts?: ValidateOpts;
+  /**
+   * True when IATBatch.build assigned the trace number rather than the caller.
+   * See EntryDetail.traceNumberAutoAssigned. Internal, omitted from JSON output.
+   */
+  traceNumberAutoAssigned = false;
 
   parse(record: string): void {
     if (record.length !== 94) return;

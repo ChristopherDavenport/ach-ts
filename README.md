@@ -95,6 +95,17 @@ const writer = new Writer();
 const output = writer.write(file);
 ```
 
+#### Trace numbers
+
+Leaving `entry.traceNumber` unset lets the library assign it: `batch.create()`
+numbers the entries it holds, then `file.create()` continues that sequence
+across every batch in the file. Nacha scopes trace number uniqueness to the
+file rather than the batch, so a multi-batch file gets `...0000001`,
+`...0000002`, `...0000003` and so on rather than restarting at `...0000001` in
+each batch. Trace numbers you set yourself, before the batch is built, are left
+alone. `file.validate()` rejects a file that repeats a trace number; pass
+`customTraceNumbers: true` to skip that check.
+
 ### Write to string
 
 ```typescript
@@ -252,7 +263,7 @@ Both support regular and IAT batches. `StreamingWriter` auto-detects batch trans
 
 `StreamingReader` performs full NACHA validation using O(1) running accumulators — it never needs to hold all entries in memory. Validation covers:
 
-- Per-entry checks: trace number ascending order, trace number ODFI match, category consistency, addenda record indicators, addenda sequence numbers, `IndividualName` required for applicable SEC codes
+- Per-entry checks: trace number ascending order, trace number uniqueness across the file, trace number ODFI match, Return/NOC transaction codes carrying an Addenda98 or Addenda99, category consistency, addenda record indicators, addenda sequence numbers, `IndividualName` required for applicable SEC codes
 - SEC-specific rules: the same `invalidEntries()` checks as each batch subclass (PPD, CCD, WEB, IAT, etc.)
 - Batch boundary checks: header/control field matching (service class code, company identification, ODFI, batch number), entry hash, entry/addenda count, debit/credit totals, COR amount-zero rule, batch number ascending order
 - File boundary checks: batch count, entry/addenda count, entry hash, total debit/credit amounts
@@ -471,7 +482,7 @@ The `ValidateOpts` interface controls which validation rules to enforce or bypas
 | `requireABAOrigin` | `false` | Require valid ABA routing number as origin |
 | `bypassOriginValidation` | `false` | Skip origin field validation |
 | `bypassDestinationValidation` | `false` | Skip destination field validation |
-| `customTraceNumbers` | `false` | Allow trace numbers that don't match ODFI |
+| `customTraceNumbers` | `false` | Allow trace numbers that don't match ODFI, and skip the file-wide uniqueness check |
 | `allowZeroBatches` | `false` | Allow files with no batches |
 | `allowMissingFileHeader` | `false` | Allow files without a FileHeader record |
 | `allowMissingFileControl` | `false` | Allow files without a FileControl record |

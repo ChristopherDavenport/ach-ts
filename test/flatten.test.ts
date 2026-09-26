@@ -18,8 +18,24 @@ function readFixture(filename: string): string {
   return fs.readFileSync(path.join(testdataDir, filename), 'utf-8');
 }
 
+/**
+ * Fixtures whose batches reuse the same Entry Detail Trace Number. Nacha scopes
+ * trace number uniqueness to the file, so flattening them produces a file that
+ * fails the uniqueness check; these are parsed with customTraceNumbers (which
+ * flatten carries onto the flattened file) so each test still covers the
+ * flattening behaviour it is named for.
+ */
+const duplicateTraceNumberFixtures = new Set([
+  'flattenBatchesTraceNumberCollision.ach',
+  'flattenIATBatchesOneBatchHeader.ach',
+]);
+
 function parseFixture(filename: string): File {
-  return readACHFile(readFixture(filename));
+  const file = readACHFile(readFixture(filename));
+  if (duplicateTraceNumberFixtures.has(filename)) {
+    file.setValidation({ customTraceNumbers: true });
+  }
+  return file;
 }
 
 /** Extract structure: array of batches, each being an array of trace numbers (or amounts for ADV). */

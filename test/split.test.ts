@@ -623,3 +623,33 @@ describe('splitFile', () => {
     });
   });
 });
+
+// =========================================================================
+// Trace numbers in split output
+//
+// splitFile clears trace numbers so each output batch is rebuilt, and
+// Batch.build numbers from 1. Without a file-wide sequence every batch of a
+// split file would restart at ...0000001 and collide.
+// =========================================================================
+describe('splitFile trace numbers', () => {
+  it('produces unique trace numbers within each output file', () => {
+    const batches = [];
+    for (let i = 0; i < 6; i++) {
+      const [b, err] = mockBatch(PPD, [mockEntry('07100001', 10000, CheckingCredit)]);
+      expect(err).toBeNull();
+      batches.push(b);
+    }
+    const file = mockFile(batches);
+
+    const [result, splitErr] = splitFile(file, { conditions: { maxBatches: 2 } });
+    expect(splitErr).toBeNull();
+
+    const files = result.get('default')!;
+    expect(files.length).toBeGreaterThan(1);
+    for (const f of files) {
+      const traces = f.batches.flatMap(b => b.getEntries().map(e => e.traceNumber));
+      expect(new Set(traces).size).toBe(traces.length);
+      expect(f.validate()).toBeNull();
+    }
+  });
+});

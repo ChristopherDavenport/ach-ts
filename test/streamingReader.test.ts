@@ -122,11 +122,14 @@ describe('StreamingReader', () => {
     const paths = [
       'two-micro-deposits.ach',
       'web-debit.ach',
+      // 20110805A.ach repeats trace numbers across its batches, which is
+      // unique per file rather than per batch, hence customTraceNumbers.
       '20110805A.ach',
     ];
     for (const p of paths) {
-      const file = openFile(p);
-      const sr = streamingReaderFromFile(p);
+      const opts = p === '20110805A.ach' ? { customTraceNumbers: true } : undefined;
+      const file = openFile(p, opts);
+      const sr = streamingReaderFromFile(p, opts);
       await ensureFileEqualsStreamingReader(file, sr);
     }
   });
@@ -588,7 +591,9 @@ describe('StreamingReader validation', () => {
   // ----------------------------------------------------------------
 
   it('valid IAT with addenda17/18 — no errors', async () => {
-    const sr = streamingReaderFromFile('20180716-IAT-A17-A18.ach');
+    // This fixture's two IAT batches reuse the same trace number, so it needs
+    // customTraceNumbers to isolate the addenda17/18 behaviour under test.
+    const sr = streamingReaderFromFile('20180716-IAT-A17-A18.ach', { customTraceNumbers: true });
     const { entries, errors } = await collectEntriesAndErrors(sr);
     expect(entries.length).toBeGreaterThan(0);
     expect(errors).toHaveLength(0);
@@ -644,5 +649,69 @@ describe('StreamingReader validation', () => {
     const { entries, errors } = await collectEntriesAndErrors(sr);
     expect(entries.length).toBeGreaterThan(0);
     expect(errors).toHaveLength(0);
+  });
+  // ----------------------------------------------------------------
+  // Trace number uniqueness and Return/NOC addenda (file-scoped rules)
+  // ----------------------------------------------------------------
+
+  it('duplicate trace numbers across batches → error', async () => {
+    const sr = streamingReaderFromFile('20180713-IAT.ach');
+    const { errors } = await collectEntriesAndErrors(sr);
+    expect(errors.some(e => e.message.includes('used more than once'))).toBe(true);
+  });
+
+  it('customTraceNumbers suppresses the duplicate trace error', async () => {
+    const sr = streamingReaderFromFile('20180713-IAT.ach', { customTraceNumbers: true });
+    const { errors } = await collectEntriesAndErrors(sr);
+    expect(errors.some(e => e.message.includes('used more than once'))).toBe(false);
+  });
+
+  it('catches duplicates across batches that are each internally ascending', async () => {
+    // batch 1 traces ...0000001, ...0000002, ...0000022
+    // batch 2 traces ...0000001, ...0000002, ...0000003
+    // No batch violates the ascending rule; the collisions are purely
+    // cross-batch, so only a file-scoped check finds them.
+    const sr = streamingReaderFromFile('flattenBatchesTraceNumberCollision.ach');
+    const { errors } = await collectEntriesAndErrors(sr);
+    const dups = errors.filter(e => e.message.includes('used more than once'));
+    expect(dups).toHaveLength(2);
+    expect(dups[0].message).toContain('121042880000001');
+    expect(dups[1].message).toContain('121042880000002');
+    expect(errors.some(e => e.message.includes('ascending'))).toBe(false);
+  });
+
+  it('bypassBatchValidation does not suppress the duplicate trace error', async () => {
+    // Uniqueness is a property of the file, not of a batch, so a batch-level
+    // bypass must not turn it off. File.validate behaves the same way.
+    const sr = streamingReaderFromFile('flattenBatchesTraceNumberCollision.ach', {
+      bypassBatchValidation: true,
+    });
+    const { errors } = await collectEntriesAndErrors(sr);
+    expect(errors.some(e => e.message.includes('used more than once'))).toBe(true);
+
+    const file = openFile('flattenBatchesTraceNumberCollision.ach');
+    expect(file.validateWith({ bypassBatchValidation: true })?.message)
+      .toContain('used more than once');
+  });
+
+  it('return transaction code with no addenda → error', async () => {
+    // Swap the entry's transaction code from 22 (checking credit) to 21
+    // (checking return/NOC credit) without adding an Addenda98/99. Both are
+    // credit codes, so the batch and file totals stay in balance and this is
+    // the only thing wrong with the file.
+    const mutated = readTestdata('ppd-credit.ach')
+      .split('\n')
+      .map(l => (l.startsWith('622') ? '621' + l.slice(3) : l))
+      .join('\n');
+    const sr = new StreamingReader(linesToAsync(mutated));
+    const { errors } = await collectEntriesAndErrors(sr);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toContain('Addenda98 or Addenda99');
+  });
+
+  it('COR file with Addenda98 does not trip the Return/NOC addenda rule', async () => {
+    const sr = streamingReaderFromFile('cor-read.ach');
+    const { errors } = await collectEntriesAndErrors(sr);
+    expect(errors.some(e => e.message.includes('Addenda98 or Addenda99'))).toBe(false);
   });
 });

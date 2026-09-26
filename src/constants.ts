@@ -161,6 +161,23 @@ export const LoanDebit = 55;
 /** LoanReturnNOCDebit is a return that debits the loan account */
 export const LoanReturnNOCDebit = 56;
 
+const returnNOCTransactionCodes = new Set([
+  CheckingReturnNOCCredit, CheckingReturnNOCDebit,
+  SavingsReturnNOCCredit, SavingsReturnNOCDebit,
+  GLReturnNOCCredit, GLReturnNOCDebit,
+  LoanReturnNOCCredit, LoanReturnNOCDebit,
+]);
+
+/**
+ * isReturnNOCTransactionCode reports whether a transaction code is one of the
+ * codes reserved for Return and Notification of Change entries. Such entries
+ * carry an Addenda98 or Addenda99 record and must be batched separately from
+ * forward entries.
+ */
+export function isReturnNOCTransactionCode(code: number): boolean {
+  return returnNOCTransactionCodes.has(code);
+}
+
 // ADV Transaction Codes (Accounting Records for ADV Files only)
 /** CreditForDebitsOriginated is a credit for ACH debits originated */
 export const CreditForDebitsOriginated = 81;
